@@ -213,8 +213,9 @@ describe('createTextTransform - 新增用例', () => {
     expect(result).toContain('¥43.99');
     expect(result).toContain('¥88.85');
     // ANSI 序列未被破坏（转义序列依然完整）
-    expect(result).toContain('[32m¥43.99[0m');
-    expect(result).toContain('[32m¥88.85[0m');
+    // ANSI 序列完整，允许列填充空格在 ANSI 与 ¥ 之间
+    expect(result).toMatch(/\x1b\[32m *¥43\.99\x1b\[0m/);
+    expect(result).toMatch(/\x1b\[32m *¥88\.85\x1b\[0m/);
     // 原始 $ 符号不再存在（已被替换为 ¥）
     expect(result).not.toContain('$6.11');
     expect(result).not.toContain('$12.34');

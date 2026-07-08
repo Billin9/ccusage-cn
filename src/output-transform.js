@@ -98,19 +98,26 @@ export function createTextTransform(rate) {
       // USD → CNY（捕获前导空格，保持表格列宽不变）
       // 乘以汇率后数字位数可能增加（如 $2.58 → ¥18.58），
       // 必须保持替换前后字符总宽度一致，否则表格列错位。
-      // 仅当有 ≥2 个前导空格时视为表格列填充（单个空格通常是词间分隔）
-      text = text.replace(/( *)\$(\d+\.?\d*)/g, (match, spaces, amount) => {
-        const cny = (parseFloat(amount) * rate).toFixed(2);
-        const newValue = `¥${cny}`;
+      // ANSI 转义序列在计算宽度时视为不可见字符。
+      text = text.replace(
+        /( *)(\x1b\[[\d;]+m)?\$(\d+\.?\d*)/g,
+        (match, spaces, ansi, amount) => {
+          const cny = (parseFloat(amount) * rate).toFixed(2);
+          const newValue = `¥${cny}`;
+          const ansiCode = ansi || '';
 
-        if (spaces.length < 2) {
-          // 词间分隔（0~1 空格），保持原样不调整
-          return spaces + newValue;
+          // 可见内容宽度 = 总匹配长 - ANSI（不可见）
+          const visibleWidth = match.length - ansiCode.length;
+
+          if (spaces.length < 2 && !ansiCode) {
+            // 词间分隔（0~1 空格且无 ANSI），保持原样
+            return spaces + newValue;
+          }
+
+          // 表格列填充（≥2 空格或有 ANSI），padStart 保证可见宽度不变
+          return ansiCode + newValue.padStart(visibleWidth);
         }
-
-        // 表格列填充（≥2 空格），padStart 保证替换后总宽度不变
-        return newValue.padStart(match.length);
-      });
+      );
 
       // 替换列标题（含分行场景：表头中 Cost 和 (USD) 可能在不同行）
       text = text.replace(/Cost \(USD\)/g, 'Cost (CNY)');
