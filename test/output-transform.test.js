@@ -193,3 +193,102 @@ describe('createJsonTransform', () => {
     expect(parsed.nested.costUSD).toBeNull();
   });
 });
+
+describe('createTextTransform - 新增用例', () => {
+  it('保持 ANSI 转义序列完整（不破坏颜色码）', async () => {
+    // 模拟带 ANSI 颜色代码的上游输出
+    const input = '│ [32m$6.11[0m │\n│ [32m$12.34[0m │';
+    const result = await pipeThroughText(input, 7.2);
+    // ANSI 颜色码和重置码应保持不变
+    expect(result).toContain('[32m');
+    expect(result).toContain('[0m');
+    // 费用值被替换
+    expect(result).toContain('¥43.99');
+    expect(result).toContain('¥88.85');
+    // ANSI 序列未被破坏（转义序列依然完整）
+    expect(result).toContain('[32m¥43.99[0m');
+    expect(result).toContain('[32m¥88.85[0m');
+    // 原始 $ 符号不再存在（已被替换为 ¥）
+    expect(result).not.toContain('$6.11');
+    expect(result).not.toContain('$12.34');
+  });
+
+  it('Buffer 类型的 chunk 正确转换', async () => {
+    const result = await new Promise((resolve, reject) => {
+      const transform = createTextTransform(7.2);
+      const chunks = [];
+      transform.on('data', (chunk) => chunks.push(chunk));
+      transform.on('end', () => resolve(chunks.join('')));
+      transform.on('error', reject);
+      // 写入 Buffer 而非字符串
+      transform.write(Buffer.from('费用: $12.34', 'utf-8'));
+      transform.end();
+    });
+    expect(result).toContain('¥88.85');
+    expect(result).not.toContain('$12.34');
+  });
+
+  it('大金额 $9999.99 正确转换', async () => {
+    const result = await pipeThroughText('$9999.99', 7.2);
+    expect(result).toContain('¥71999.93');
+  });
+
+  it('零值 $0.00 转换为 ¥0.00', async () => {
+    const result = await pipeThroughText('$0.00', 7.2);
+    expect(result).toContain('¥0.00');
+  });
+});
+
+describe('createJsonTransform - 新增用例', () => {
+  it('处理包含 costUSD、total_cost 等混合费用字段', async () => {
+    const input = JSON.stringify({
+      costUSD: 100,
+      total_cost: 50,
+      modelBreakdowns: [
+        { cost: 30, modelName: 'gpt-5' },
+        { cost: 20, modelName: 'gemini-2.5' }
+      ]
+    });
+    const result = await pipeThroughJson(input, 7.2);
+    const parsed = JSON.parse(result);
+    expect(parsed.costCNY).toBe(720);
+    expect(parsed.total_costCNY).toBe(360);
+    expect(parsed.modelBreakdowns[0].costCNY).toBe(216);
+    expect(parsed.modelBreakdowns[1].costCNY).toBe(144);
+  });
+
+  it('空对象不崩溃', async () => {
+    const result = await pipeThroughJson('{}', 7.2);
+    expect(JSON.parse(result)).toEqual({});
+  });
+
+  it('空数组不崩溃', async () => {
+    const result = await pipeThroughJson('[]', 7.2);
+    expect(JSON.parse(result)).toEqual([]);
+  });
+});
+
+describe('集成: exchange-rate + output-transform', () => {
+  it('汇率值影响转换结果', async () => {
+    // rate=7.0 时 $10 → ¥70.00
+    const result1 = await pipeThroughText('$10.00', 7.0);
+    expect(result1).toContain('¥70.00');
+
+    // rate=6.8 时 $10 → ¥68.00
+    const result2 = await pipeThroughText('$10.00', 6.8);
+    expect(result2).toContain('¥68.00');
+
+    // rate=7.5 时 $10 → ¥75.00
+    const result3 = await pipeThroughText('$10.00', 7.5);
+    expect(result3).toContain('¥75.00');
+  });
+
+  it('JSON 模式下汇率影响 costCNY 值', async () => {
+    const input = JSON.stringify({ costUSD: 10 });
+    const result1 = await pipeThroughJson(input, 7.0);
+    expect(JSON.parse(result1).costCNY).toBe(70);
+
+    const result2 = await pipeThroughJson(input, 7.2);
+    expect(JSON.parse(result2).costCNY).toBe(72);
+  });
+});

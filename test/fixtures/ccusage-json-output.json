@@ -1,0 +1,66 @@
+{
+  "daily": [
+    {
+      "agent": "all",
+      "cacheCreationTokens": 0,
+      "cacheReadTokens": 2560,
+      "inputTokens": 88,
+      "modelsUsed": ["gpt-5-codex"],
+      "outputTokens": 361,
+      "period": "2025-09-22",
+      "totalCost": 0.00404,
+      "totalTokens": 3009,
+      "metadata": {
+        "agents": ["codex"]
+      },
+      "modelBreakdowns": [
+        {
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 2560,
+          "cost": 0.00404,
+          "inputTokens": 88,
+          "modelName": "gpt-5-codex",
+          "outputTokens": 361
+        }
+      ]
+    },
+    {
+      "agent": "all",
+      "cacheCreationTokens": 0,
+      "cacheReadTokens": 933120,
+      "inputTokens": 292442,
+      "modelsUsed": ["gpt-5-codex", "gemini-2.5-pro"],
+      "outputTokens": 33114,
+      "period": "2025-09-29",
+      "totalCost": 0.89819875,
+      "totalTokens": 1262448,
+      "metadata": {
+        "agents": ["codex", "gemini"]
+      },
+      "modelBreakdowns": [
+        {
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 933120,
+          "cost": 0.73693625,
+          "inputTokens": 254725,
+          "modelName": "gpt-5-codex",
+          "outputTokens": 30189
+        },
+        {
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 0,
+          "cost": 0.1612625,
+          "inputTokens": 37717,
+          "modelName": "gemini-2.5-pro",
+          "outputTokens": 2925
+        }
+      ]
+    }
+  ],
+  "summary": {
+    "totalInputTokens": 292530,
+    "totalOutputTokens": 33475,
+    "totalTokens": 1265457,
+    "totalCostUSD": 0.90223875
+  }
+}
