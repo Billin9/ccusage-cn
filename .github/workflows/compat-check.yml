@@ -1,0 +1,87 @@
+# .github/workflows/compat-check.yml
+# 每周自动检测上游 ccusage 版本变化是否破坏兼容性
+# 失败时自动创建 GitHub Issue 告警（不阻塞正常开发流程）
+name: Compat Check
+
+on:
+  schedule:
+    - cron: '0 0 * * 0'  # 每周日 UTC 00:00
+  workflow_dispatch:       # 支持手动触发
+
+jobs:
+  compat-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      issues: write       # 创建 Issue 所需的最小权限
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check upstream version
+        id: version
+        run: |
+          LATEST=$(npm view ccusage version --json 2>/dev/null || npm view ccusage version)
+          echo "latest=$LATEST" >> $GITHUB_OUTPUT
+          echo "Upstream ccusage latest version: $LATEST"
+
+          MAJOR=$(echo "$LATEST" | cut -d. -f1)
+          if [ "$MAJOR" = "20" ]; then
+            echo "compatible=true" >> $GITHUB_OUTPUT
+          else
+            echo "compatible=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Test with compatible version
+        if: steps.version.outputs.compatible == 'true'
+        run: |
+          npm update ccusage  # 更新到最新 compatible 版本
+          npm test
+        env:
+          CCUSAGE_CNY_RATE: '7.0'
+
+      - name: Test with new major version
+        if: steps.version.outputs.compatible == 'false'
+        id: test-new-version
+        continue-on-error: true  # 即使失败也继续执行（后续步骤要创建 Issue）
+        run: |
+          echo "Major version bump detected: ccusage@${{ steps.version.outputs.latest }}"
+          npm install ccusage@latest --no-save
+          npm test
+        env:
+          CCUSAGE_CNY_RATE: '7.0'
+
+      - name: Create issue on compat break
+        if: steps.version.outputs.compatible == 'false' && steps.test-new-version.outcome == 'failure'
+        run: |
+          gh issue create \
+            --title "兼容性破坏: ccusage ${{ steps.version.outputs.latest }} 与 ccusage-cn 不兼容" \
+            --label "compat-break" \
+            --body "
+      ## 兼容性检测报告
+
+      上游 ccusage 已发布主版本更新至 **v${{ steps.version.outputs.latest }}**，
+      ccusage-cn 的集成测试在与最新上游版本配合运行时失败。
+
+      **详细信息:**
+      - 上游版本: ${{ steps.version.outputs.latest }}
+      - 测试时间: $(date -u +'%Y-%m-%dT%H:%M:%SZ')
+      - 运行 ID: ${{ github.run_id }}
+
+      **建议操作:**
+      1. 查看 CI 运行日志: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      2. 分析上游 breaking changes
+      3. 更新 ccusage-cn 适配新版本
+      4. 更新 package.json 中的 ccusage 依赖范围
+      "
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
