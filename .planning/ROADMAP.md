@@ -60,7 +60,10 @@
 3. 用户在 Windows（PowerShell/Git Bash/CMD）执行 `npx ccusage-cn <args>`，行为与 macOS/Linux 完全一致
 4. npm 包 `ccusage-cn` 在 npmjs.com 上可搜索、可安装
 
-**计划:** 待定
+**计划:** 1 个计划
+
+**计划清单:**
+- [ ] `02-01-PLAN.md` — 发布前配置（package.json、publint）、中英双语 README、npm 发布与验证
 
 ---
 
@@ -89,7 +92,7 @@
 | 阶段 | 计划完成 | 状态 | 完成日期 |
 |------|----------|------|----------|
 | 1. 核心包装器 (MVP) | 2/2 | Complete   | 2026-07-08 |
-| 2. npm 发布与跨平台支持 | 0/0 | 未开始 | - |
+| 2. npm 发布与跨平台支持 | 0/1 | 未开始 | - |
 | 3. CI 与更新维护 | 0/0 | 未开始 | - |
 
 ## 覆盖验证 (Coverage)
