@@ -8,15 +8,15 @@
 
 ## 阶段总览 (Phases)
 
-- [ ] **阶段 1: 核心包装器 (MVP)** - 构建零依赖 Node.js CLI 包装器，实现上游进程托管、输出流人民币转换
-- [ ] **阶段 2: npm 发布与跨平台支持** - 发布 npm 包，确保 macOS/Linux/Windows 三平台可用
-- [ ] **阶段 3: CI 与更新维护** - 建立自动化 CI，定期验证上游兼容性
+- [ ] **Phase 1: 核心包装器 (MVP)** - 构建零依赖 Node.js CLI 包装器，实现上游进程托管、输出流人民币转换
+- [ ] **Phase 2: npm 发布与跨平台支持** - 发布 npm 包，确保 macOS/Linux/Windows 三平台可用
+- [ ] **Phase 3: CI 与更新维护** - 建立自动化 CI，定期验证上游兼容性
 
 ---
 
 ## 阶段详情 (Phase Details)
 
-### 阶段 1: 核心包装器 (MVP)
+### Phase 1: 核心包装器 (MVP)
 
 **目标:** 用户可在本地运行 ccusage-cn 替代 ccusage，所有命令参数完全相同，费用自动以人民币显示
 
@@ -39,7 +39,7 @@
 
 ---
 
-### 阶段 2: npm 发布与跨平台支持
+### Phase 2: npm 发布与跨平台支持
 
 **目标:** ccusage-cn 发布至 npm 公共注册表，macOS/Linux/Windows 三平台用户可通过 `bunx ccusage-cn` 开箱使用
 
@@ -60,7 +60,7 @@
 
 ---
 
-### 阶段 3: CI 与更新维护
+### Phase 3: CI 与更新维护
 
 **目标:** 建立自动化 CI 流水线，定期验证上游兼容性，确保 ccusage-cn 长期可维护且自动继承上游更新
 
