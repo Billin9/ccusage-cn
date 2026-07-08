@@ -1,6 +1,6 @@
 {
   "name": "ccusage-cn",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "type": "module",
   "bin": {
     "ccusage-cn": "./bin/cli.js"
