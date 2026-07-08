@@ -1,6 +1,6 @@
 # ccusage-cn
 
-[![CI](https://github.com/user/ccusage-cn/actions/workflows/ci.yml/badge.svg)](https://github.com/user/ccusage-cn/actions/workflows/ci.yml)
+[![CI](https://github.com/Billin9/ccusage-cn/actions/workflows/ci.yml/badge.svg)](https://github.com/Billin9/ccusage-cn/actions/workflows/ci.yml)
 
 ## 项目简介 / Introduction
 
@@ -10,86 +10,135 @@ ccusage-cn is the CNY (Chinese Yuan) adaptation of [ccusage](https://github.com/
 
 ---
 
+## 快速上手 / Quick Start
+
+```bash
+# 一句话查看今日 Claude Code 费用（macOS）
+bunx ccusage-cn@latest claude -b --since $(date -v-1d +%Y%m%d)
+
+# Linux 用户替换 date 语法
+bunx ccusage-cn@latest claude -b --since $(date -d '1 day ago' +%Y%m%d)
+```
+
+首次运行 `bunx` 会自动下载并缓存，后续运行秒开。
+
+---
+
 ## 安装方式 / Installation
 
-ccusage-cn 可以通过以下几种方式使用，无需安装即可直接运行：
+无需安装即可直接运行：
 
-### 使用 bunx（推荐）
-
-```bash
-bunx ccusage-cn -b
-```
-
-### 使用 npx
+### bunx（推荐）
 
 ```bash
-npx ccusage-cn -b
+bunx ccusage-cn@latest <args>
 ```
 
-### 全局安装
+### npx
+
+```bash
+npx ccusage-cn@latest <args>
+```
+
+### 全局安装（适合频繁使用）
 
 ```bash
 npm install -g ccusage-cn
-ccusage-cn -b
+ccusage-cn <args>
 ```
-
-> **提示：** 首次运行 `bunx` 或 `npx` 时会自动下载并安装 ccusage-cn 及其依赖，后续运行将使用缓存。全局安装适合频繁使用场景。
 
 ---
 
-## 使用示例 / Usage Examples
+## 常用命令 / Common Commands
 
-以下示例展示 ccusage-cn 的常用命令，所有参数与上游 ccusage 完全一致：
+ccusage-cn 完整兼容上游 ccusage 所有参数，以下是最实用的命令组合。
 
-### 查看当前周期账单
+### 按 AI 工具查看
 
-```bash
-ccusage-cn -b
-```
+ccusage 支持 15+ AI 编程工具，通过子命令指定来源：
 
-输出中的费用自动以人民币（¥）显示，与 `ccusage -b` 的美元（$）输出格式一致。
+| AI 工具 | 命令示例 |
+|---------|---------|
+| Claude Code | `ccusage-cn claude -b` |
+| Codex | `ccusage-cn codex daily` |
+| GitHub Copilot | `ccusage-cn copilot daily` |
+| Gemini CLI | `ccusage-cn gemini daily` |
+| Qwen | `ccusage-cn qwen daily` |
+| Kimi | `ccusage-cn kimi daily` |
+| Goose | `ccusage-cn goose daily` |
+| … 及更多 | `ccusage-cn --help` |
 
-### 查看活跃会话区块费用
+> 使用 `ccusage-cn daily`（不指定子命令）可汇总所有检测到的 AI 工具。
 
-```bash
-ccusage-cn blocks --active
-```
-
-### JSON 模式输出
-
-```bash
-ccusage-cn --json
-```
-
-JSON 输出中保留原始 `costUSD` 字段，并追加 `costCNY` 字段（人民币等值）：
-
-```json
-{
-  "costUSD": 5.21,
-  "costCNY": 37.51
-}
-```
-
-### 自定义汇率
+### 你每天都在用的
 
 ```bash
-CCUSAGE_CNY_RATE=7.25 ccusage-cn -b
+# 查看 Claude Code 昨日费用（简要模式）
+bunx ccusage-cn@latest claude -b --since $(date -v-1d +%Y%m%d)
+
+# 查看 Claude Code 最近会话区块
+bunx ccusage-cn@latest claude blocks --recent
+
+# 查看 Claude Code 当前活跃会话（实时费用）
+bunx ccusage-cn@latest claude blocks --active
 ```
 
-通过环境变量覆盖默认汇率（7.2），使用自定义汇率进行费用转换。
+### 时间粒度
+
+```bash
+ccusage-cn daily          # 按日汇总（默认）
+ccusage-cn weekly         # 按周汇总
+ccusage-cn monthly        # 按月汇总
+ccusage-cn session        # 按会话汇总
+ccusage-cn blocks         # 按 Token 区块明细
+```
+
+### 时间过滤
+
+```bash
+# 指定日期范围
+ccusage-cn claude daily --since 2026-07-01 --until 2026-07-08
+
+# 最近一天（macOS）
+ccusage-cn claude -b --since $(date -v-1d +%Y%m%d)
+
+# 最近一天（Linux）
+ccusage-cn claude -b --since $(date -d '1 day ago' +%Y%m%d)
+```
+
+### 常用标志
+
+```bash
+-b, --brief          # 简要模式，适合快速浏览
+--json               # JSON 输出（保留 costUSD，追加 costCNY）
+--compact            # 紧凑表格，适合截图分享
+--breakdown          # 按模型分解费用明细
+--no-cost            # 隐藏费用列，仅显示 Token 用量
+--instances          # 按项目/实例分组
+--offline            # 离线模式，使用预缓存定价数据
+```
 
 ---
 
-## 环境变量 / Environment Variables
+## Claude Code Statusline 集成
 
-| 变量名 | 类型 | 说明 | 默认值 |
-|--------|------|------|--------|
-| `CCUSAGE_CNY_RATE` | 数字（可选） | 自定义 USD→CNY 汇率，覆盖默认值 | 7.2 |
+将费用信息嵌入 Claude Code 状态栏：
+
+> 参见上游 [ccusage statusline 文档](https://github.com/ccusage/ccusage#statusline-beta) 了解配置方式，将命令中的 `ccusage` 替换为 `ccusage-cn` 即可。
+
+---
+
+## 自定义汇率 / Custom Exchange Rate
+
+```bash
+# 使用自定义汇率（覆盖默认值 7.2）
+CCUSAGE_CNY_RATE=7.25 ccusage-cn claude -b
+```
 
 汇率回退策略（三层）：
 
 1. **环境变量**：`CCUSAGE_CNY_RATE` 显式设置的值优先级最高
-2. **CDN 缓存**：首次联网运行时从免费 API 获取实时汇率并缓存到本地（`~/.ccusage-cn/cache/rate.json`），有效期至下次运行
+2. **CDN 缓存**：首次联网运行时从免费 API 获取实时汇率并缓存到本地（`~/.ccusage-cn/cache/rate.json`）
 3. **默认值**：7.2（断网或 API 不可用时使用，不会阻塞输出）
 
 ---
@@ -106,20 +155,22 @@ ccusage-cn 与上游 ccusage 的核心差异仅为费用显示单位，其余 10
 | 命令/参数 | 全部 | 完全透传，100% 兼容 |
 | 输出格式 | 表格/JSON/CSV | 保持原格式，仅费用单位转换 |
 
-**平台验证状态（CI 验证通过 ✅）：**
+**平台兼容性（CI 验证通过 ✅）：**
 
-- macOS（ARM64）：CI 矩阵验证通过
-- Linux（x64/ARM64）：CI 矩阵验证通过
-- Windows（x64/ARM64）：CI 矩阵验证通过
+| 平台 | Node.js 18 | Node.js 20 | Node.js 22 |
+|------|-----------|-----------|-----------|
+| macOS（ARM64） | ✅ | ✅ | ✅ |
+| Ubuntu（x64） | ✅ | ✅ | ✅ |
+| Windows（x64） | ✅ | ✅ | ✅ |
 
 ---
 
 ## 兼容的上游版本 / Compatible Upstream Version
 
 - **上游依赖**：`ccusage@^20.0.0`（caret 范围，自动兼容 patch 和 minor 更新）
-- **ccusage-cn 版本**：`1.0.0`（独立语义化版本，不与上游版本号关联）
+- **ccusage-cn 版本**：`1.0.3`（独立语义化版本，不与上游版本号关联）
 
-ccusage-cn 使用独立的语义化版本号（SemVer），与上游 ccusage 的版本号无关。上游的 patch 和 minor 更新会被自动兼容，major 更新需要 ccusage-cn 适配后才能支持。
+上游发布 patch/minor 更新时，用户执行 `bunx ccusage-cn@latest` 即可自动使用兼容的最新版本。上游 CI 每周自动检测兼容性。
 
 ---
 
