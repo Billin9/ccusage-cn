@@ -101,8 +101,9 @@ export function createTextTransform(rate) {
         return `¥${cny}`;
       });
 
-      // 替换列标题
+      // 替换列标题（含分行场景：表头中 Cost 和 (USD) 可能在不同行）
       text = text.replace(/Cost \(USD\)/g, 'Cost (CNY)');
+      text = text.replace(/\(USD\)/g, '(CNY)');
 
       this.push(text, 'utf-8');
       callback();

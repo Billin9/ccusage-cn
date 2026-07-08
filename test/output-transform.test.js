@@ -86,6 +86,13 @@ describe('createTextTransform', () => {
     expect(result).not.toContain('Cost (USD)');
   });
 
+  it('测试 3b: 独立的 (USD) 也被替换为 (CNY)（表格分行场景）', async () => {
+    // 模拟表格中 Cost 和 (USD) 分行的情况
+    const result = await pipeThroughText('│    (USD) │', 7.2);
+    expect(result).toContain('(CNY)');
+    expect(result).not.toContain('(USD)');
+  });
+
   it('测试 4: chunk 边界（如 "$1" 结尾、"2.34" 开头）不破坏替换', async () => {
     // 故意在 "$12" 之后分割，让 ".34" 在下一个 chunk
     const input = '费用: $12.34 总计';
