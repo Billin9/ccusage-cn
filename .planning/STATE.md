@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: ready_to_plan
-last_updated: "2026-07-08T14:20:25.987Z"
+status: completed
+last_updated: "2026-07-08T14:29:17.000Z"
 progress:
   total_phases: 3
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 4
-  completed_plans: 3
-  percent: 67
+  completed_plans: 4
+  percent: 100
 ---
 
 # 项目状态
@@ -19,24 +19,25 @@ progress:
 参见: .planning/PROJECT.md (更新于 2026-07-08)
 
 **核心价值:** 以最小维护代价，持续继承上游更新，实现 AI 编程 Token 费用的本地货币化展示
-**当前焦点:** 阶段 2: npm 发布与跨平台支持 — 完成
+**当前焦点:** 阶段 3: CI 与更新维护 — 完成
 
 ## 当前位置
 
-阶段: 2/3 (npm 发布与跨平台支持) — 完成
-计划: 1/1 当前阶段 (02-01 完成)
-状态: 待规划 — 阶段 2 完成，等待阶段 3
-最后活动: 2026-07-08 — 发布 ccusage-cn@1.0.3，表格对齐修复
+阶段: 3/3 (CI 与更新维护) — 完成
+计划: 1/1 当前阶段 (03-01 完成)
+状态: 完成 — 所有阶段完成
+最后活动: 2026-07-08 — 创建 CI 工作流与集成测试
 
-进度: [████████████████████] 67% (阶段 2 完成)
+进度: [████████████████████] 100% (所有阶段完成)
 
 ## 性能指标
 
 **速度:**
 
-- 已完成计划: 3 (01-01, 01-02, 02-01)
+- 已完成计划: 4 (01-01, 01-02, 02-01, 03-01)
 - 阶段 1 完成: 2026-07-08 16:31 UTC (~10 分钟)
 - 阶段 2 完成: 2026-07-08 12:08 UTC (~50 分钟，含 3 轮修复迭代)
+- 阶段 3 完成: 2026-07-08 14:29 UTC (~5 分钟)
 - npm 版本: 1.0.0 → 1.0.1 → 1.0.2 → 1.0.3
 
 *在每次计划完成后更新*
@@ -57,10 +58,15 @@ progress:
 - 列宽保持: padStart + ANSI 不可见字符跳过，保证表格对齐
 - npm 发布: prepublishOnly (test + publint) 质量门
 - 独立 SemVer: 不与上游 ccusage 版本号绑定
+- CI 双工作流结构：ci.yml（push/PR）+ compat-check.yml（每周 cron）
+- actions/checkout@v6 + actions/setup-node@v6（v4 于 2026-06 弃用）
+- 版本比对：cut -d. -f1 替代 node:semver（Node.js 无此内置模块）
+- npm install --no-save 仅用于 major bump 测试，npm ci 不接受此参数
+- CI 所有步骤使用 CCUSAGE_CNY_RATE 固定汇率，跳过网络依赖
 
 ### 待办事项
 
-等待阶段 3: CI 与更新维护
+（无）— 所有阶段已完成
 
 ### 阻碍/关注点
 
@@ -70,13 +76,13 @@ progress:
 
 | 分类 | 项目 | 状态 | 延期时间 |
 |------|------|------|----------|
-| Phase 3 | Linux/Windows 运行时实测 | 代码已就绪，CI matrix 留 Phase 3 | 2026-07-08 |
-| Phase 3 | CI 自动发布 (GitHub Actions) | 手动发布足够 MVP | 2026-07-08 |
+| Phase 3 | Linux/Windows 运行时实测 | CI 矩阵验证通过 | 2026-07-08 |
+| Phase 3 | CI 自动发布 (GitHub Actions) | 待实施 | 2026-07-08 |
 | v2 | 实时汇率 API (RATE-01~04) | MVP 使用 env var + 默认值 | 2026-07-08 |
 | v2 | 双币种展示 (ENH-02) | 增加列宽影响表格布局 | 2026-07-08 |
 
 ## 会话连续性
 
 上次会话: 2026-07-08
-停止于: 02-01 计划完成 + 3 轮修复发布（阶段 2 完成）
-继续文件: .planning/phases/03-ci/03-CONTEXT.md（待创建）
+停止于: 03-01 计划完成（阶段 3 完成）
+继续文件: .planning/phases/03-ci/03-01-SUMMARY.md

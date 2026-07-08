@@ -10,7 +10,7 @@
 
 - [x] **Phase 1: 核心包装器 (MVP)** - 构建零依赖 Node.js CLI 包装器，实现上游进程托管、输出流人民币转换 (completed 2026-07-08)
 - [x] **Phase 2: npm 发布与跨平台支持** - 发布 npm 包，确保 macOS/Linux/Windows 三平台可用 (completed 2026-07-08)
-- [ ] **Phase 3: CI 与更新维护** - 建立自动化 CI，定期验证上游兼容性
+- [x] **Phase 3: CI 与更新维护** - 建立自动化 CI，定期验证上游兼容性 (completed 2026-07-08)
 
 ---
 
@@ -86,7 +86,7 @@
 **计划:** 1 个计划
 
 **计划清单:**
-- [ ] `03-01-PLAN.md` — 创建 CI 工作流（ci.yml + compat-check.yml）、集成测试、更新 README
+- [x] `03-01-PLAN.md` — 创建 CI 工作流（ci.yml + compat-check.yml）、集成测试、更新 README
 
 ---
 
@@ -96,7 +96,7 @@
 |------|----------|------|----------|
 | 1. 核心包装器 (MVP) | 2/2 | Complete   | 2026-07-08 |
 | 2. npm 发布与跨平台支持 | 1/1 | Complete    | 2026-07-08 |
-| 3. CI 与更新维护 | 1/0 | 未开始 | - |
+| 3. CI 与更新维护 | 1/1 | Complete | 2026-07-08 |
 
 ## 覆盖验证 (Coverage)
 

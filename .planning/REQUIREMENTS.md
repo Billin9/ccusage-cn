@@ -23,9 +23,9 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### 安装与分发 (DIST)
 
-- [ ] **DIST-01**: npm 包 `ccusage-cn` 发布，通过 `bunx ccusage-cn` 可直接运行
+- [x] **DIST-01**: npm 包 `ccusage-cn` 发布，通过 `bunx ccusage-cn` 可直接运行
 - [x] **DIST-02**: `bunx ccusage-cn` 自动拉取上游 ccusage 及其平台特定二进制依赖
-- [ ] **DIST-03**: macOS、Linux、Windows 三平台均可运行
+- [x] **DIST-03**: macOS、Linux、Windows 三平台均可运行
 
 ### 输出保真度 (OUT)
 
@@ -36,7 +36,7 @@ Requirements for initial release. Each maps to roadmap phases.
 ### 上游更新策略 (UPD)
 
 - [x] **UPD-01**: 上游 ccusage 作为 npm dependency（`^20.0.0`），patch/minor 更新自动继承
-- [ ] **UPD-02**: CI 定期（每周）运行集成测试，检测上游 major 更新是否破坏兼容性
+- [x] **UPD-02**: CI 定期（每周）运行集成测试，检测上游 major 更新是否破坏兼容性
 
 ## v2 Requirements
 
@@ -81,18 +81,19 @@ Which phases cover which requirements. Updated during roadmap creation.
 | COST-02 | 阶段 1 | Completed |
 | COST-03 | 阶段 1 | Completed |
 | COST-04 | 阶段 1 | Completed |
-| DIST-01 | 阶段 2 | Pending |
+| DIST-01 | 阶段 2 | Completed |
 | DIST-02 | 阶段 1 | Completed |
-| DIST-03 | 阶段 2 | Pending |
+| DIST-03 | 阶段 2 | Completed |
 | OUT-01 | 阶段 1 | Completed |
 | OUT-02 | 阶段 1 | Completed |
 | OUT-03 | 阶段 1 | Completed |
 | UPD-01 | 阶段 1 | Completed |
-| UPD-02 | 阶段 3 | Pending |
+| UPD-02 | 阶段 3 | Completed |
 
 **Coverage:**
 - v1 requirements: 16 total
 - Mapped to phases: 16 ✓
+- Completed: 16 ✓
 - Unmapped: 0
 
 ---
