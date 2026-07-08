@@ -1,5 +1,7 @@
 # ccusage-cn
 
+[![CI](https://github.com/user/ccusage-cn/actions/workflows/ci.yml/badge.svg)](https://github.com/user/ccusage-cn/actions/workflows/ci.yml)
+
 ## 项目简介 / Introduction
 
 **AI 编程 Token 费用，人民币一目了然。** ccusage-cn 是 [ccusage](https://github.com/ccusage/ccusage) 的人民币（CNY）适配版本——一个分析 AI 编程工具 Token 用量的 CLI 工具。它在完全兼容原版 ccusage 所有命令和参数的基础上，将费用展示从美元（USD）转换为人民币（CNY），面向中国开发者提供更直观的成本洞察。
@@ -104,13 +106,11 @@ ccusage-cn 与上游 ccusage 的核心差异仅为费用显示单位，其余 10
 | 命令/参数 | 全部 | 完全透传，100% 兼容 |
 | 输出格式 | 表格/JSON/CSV | 保持原格式，仅费用单位转换 |
 
-**平台验证状态：**
+**平台验证状态（CI 验证通过 ✅）：**
 
-- macOS（ARM64）：已完成完整功能验证
-- Linux（x64/ARM64）：基于上游 optionalDependencies 覆盖和跨平台代码分析，声明兼容
-- Windows（x64/ARM64）：基于上游 optionalDependencies 覆盖和跨平台代码分析，声明兼容
-
-> 完整的三平台 CI 验证矩阵将在后续阶段实施。
+- macOS（ARM64）：CI 矩阵验证通过
+- Linux（x64/ARM64）：CI 矩阵验证通过
+- Windows（x64/ARM64）：CI 矩阵验证通过
 
 ---
 
