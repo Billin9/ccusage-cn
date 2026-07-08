@@ -73,28 +73,28 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| CLI-01 | — | Pending |
-| CLI-02 | — | Pending |
-| CLI-03 | — | Pending |
-| CLI-04 | — | Pending |
-| COST-01 | — | Pending |
-| COST-02 | — | Pending |
-| COST-03 | — | Pending |
-| COST-04 | — | Pending |
-| DIST-01 | — | Pending |
-| DIST-02 | — | Pending |
-| DIST-03 | — | Pending |
-| OUT-01 | — | Pending |
-| OUT-02 | — | Pending |
-| OUT-03 | — | Pending |
-| UPD-01 | — | Pending |
-| UPD-02 | — | Pending |
+| CLI-01 | 阶段 1 | Pending |
+| CLI-02 | 阶段 1 | Pending |
+| CLI-03 | 阶段 1 | Pending |
+| CLI-04 | 阶段 1 | Pending |
+| COST-01 | 阶段 1 | Pending |
+| COST-02 | 阶段 1 | Pending |
+| COST-03 | 阶段 1 | Pending |
+| COST-04 | 阶段 1 | Pending |
+| DIST-01 | 阶段 2 | Pending |
+| DIST-02 | 阶段 1 | Pending |
+| DIST-03 | 阶段 2 | Pending |
+| OUT-01 | 阶段 1 | Pending |
+| OUT-02 | 阶段 1 | Pending |
+| OUT-03 | 阶段 1 | Pending |
+| UPD-01 | 阶段 1 | Pending |
+| UPD-02 | 阶段 3 | Pending |
 
 **Coverage:**
 - v1 requirements: 16 total
-- Mapped to phases: 0 (pending roadmap)
-- Unmapped: 16 ⚠️
+- Mapped to phases: 16 ✓
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-07-08*
-*Last updated: 2026-07-08 after initial definition*
+*Last updated: 2026-07-08 after roadmap creation*
