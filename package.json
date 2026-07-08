@@ -1,0 +1,30 @@
+{
+  "name": "ccusage-cn",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "ccusage-cn": "./bin/cli.js"
+  },
+  "files": [
+    "bin/",
+    "src/",
+    "package.json",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "ccusage": "^20.0.0"
+  },
+  "devDependencies": {
+    "vitest": "^3.0.0"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
