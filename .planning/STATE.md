@@ -1,6 +1,9 @@
 ---
-gsd_state_version: '1.0'
+gsd_state_version: 1.0
+milestone: v1.0
+milestone_name: milestone
 status: planning
+last_updated: "2026-07-08T08:06:54.989Z"
 progress:
   total_phases: 3
   completed_phases: 0
@@ -30,6 +33,7 @@ progress:
 ## 性能指标
 
 **速度:**
+
 - 已完成计划: 0
 - 平均耗时: -
 - 总执行时间: -
