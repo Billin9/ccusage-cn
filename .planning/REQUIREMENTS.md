@@ -16,26 +16,26 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### 费用转换 (COST)
 
-- [ ] **COST-01**: 文本表格输出中的美元费用（`$X.XX`）自动转换为人民币展示（`¥Y.YY`）
-- [ ] **COST-02**: JSON 输出中的费用字段自动追加人民币等值（`costCNY`）
-- [ ] **COST-03**: 汇率通过环境变量 `CCUSAGE_CNY_RATE` 可配置
-- [ ] **COST-04**: 无网络环境下使用缓存或默认汇率（7.2），不阻塞输出
+- [x] **COST-01**: 文本表格输出中的美元费用（`$X.XX`）自动转换为人民币展示（`¥Y.YY`）
+- [x] **COST-02**: JSON 输出中的费用字段自动追加人民币等值（`costCNY`）
+- [x] **COST-03**: 汇率通过环境变量 `CCUSAGE_CNY_RATE` 可配置
+- [x] **COST-04**: 无网络环境下使用缓存或默认汇率（7.2），不阻塞输出
 
 ### 安装与分发 (DIST)
 
 - [ ] **DIST-01**: npm 包 `ccusage-cn` 发布，通过 `bunx ccusage-cn` 可直接运行
-- [ ] **DIST-02**: `bunx ccusage-cn` 自动拉取上游 ccusage 及其平台特定二进制依赖
+- [x] **DIST-02**: `bunx ccusage-cn` 自动拉取上游 ccusage 及其平台特定二进制依赖
 - [ ] **DIST-03**: macOS、Linux、Windows 三平台均可运行
 
 ### 输出保真度 (OUT)
 
 - [ ] **OUT-01**: ANSI 彩色输出保留（通过 `FORCE_COLOR=1` 环境变量）
-- [ ] **OUT-02**: 表格列对齐在人民币转换后保持合理（不因位数变化导致严重错位）
+- [x] **OUT-02**: 表格列对齐在人民币转换后保持合理（不因位数变化导致严重错位）
 - [ ] **OUT-03**: `--help` 输出透传上游帮助信息，附加 ccusage-cn 特有选项说明
 
 ### 上游更新策略 (UPD)
 
-- [ ] **UPD-01**: 上游 ccusage 作为 npm dependency（`^20.0.0`），patch/minor 更新自动继承
+- [x] **UPD-01**: 上游 ccusage 作为 npm dependency（`^20.0.0`），patch/minor 更新自动继承
 - [ ] **UPD-02**: CI 定期（每周）运行集成测试，检测上游 major 更新是否破坏兼容性
 
 ## v2 Requirements
@@ -77,17 +77,17 @@ Which phases cover which requirements. Updated during roadmap creation.
 | CLI-02 | 阶段 1 | Pending |
 | CLI-03 | 阶段 1 | Pending |
 | CLI-04 | 阶段 1 | Pending |
-| COST-01 | 阶段 1 | Pending |
-| COST-02 | 阶段 1 | Pending |
-| COST-03 | 阶段 1 | Pending |
-| COST-04 | 阶段 1 | Pending |
+| COST-01 | 阶段 1 | Completed |
+| COST-02 | 阶段 1 | Completed |
+| COST-03 | 阶段 1 | Completed |
+| COST-04 | 阶段 1 | Completed |
 | DIST-01 | 阶段 2 | Pending |
-| DIST-02 | 阶段 1 | Pending |
+| DIST-02 | 阶段 1 | Completed |
 | DIST-03 | 阶段 2 | Pending |
 | OUT-01 | 阶段 1 | Pending |
-| OUT-02 | 阶段 1 | Pending |
+| OUT-02 | 阶段 1 | Completed |
 | OUT-03 | 阶段 1 | Pending |
-| UPD-01 | 阶段 1 | Pending |
+| UPD-01 | 阶段 1 | Completed |
 | UPD-02 | 阶段 3 | Pending |
 
 **Coverage:**
