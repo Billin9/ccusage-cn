@@ -26,3 +26,35 @@ export function getCacheDir() {
 export function formatCNY(amount) {
   return parseFloat(amount.toFixed(2));
 }
+
+/**
+ * 异步并发池——限制最大并发数的 Promise.all
+ *
+ * 无外部依赖的自实现，避免引入 p-limit。
+ *
+ * @template T, R
+ * @param {number} concurrency - 最大并发数
+ * @param {T[]} items - 要处理的元素数组
+ * @param {(item: T, index: number) => Promise<R>} fn - 异步处理函数
+ * @returns {Promise<R[]>} 与输入顺序一致的结果数组
+ */
+export async function asyncPool(concurrency, items, fn) {
+  const results = new Array(items.length);
+  let index = 0;
+
+  async function worker() {
+    while (index < items.length) {
+      const i = index++;
+      results[i] = await fn(items[i], i);
+    }
+  }
+
+  // 启动 concurrency 个 worker
+  const workers = Array.from(
+    { length: Math.min(concurrency, items.length) },
+    () => worker()
+  );
+
+  await Promise.all(workers);
+  return results;
+}

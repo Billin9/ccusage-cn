@@ -7,13 +7,17 @@
  * 1. 解析 CLI 参数（逐字转发上游，per D-09）
  * 2. 检测 --json 标志选择转换模式（per D-06）
  * 3. 解析上游二进制路径（per D-03）
- * 4. 异步获取汇率（不阻塞 stdout 输出）
+ * 4. 按模式获取汇率：JSON/缓冲模式按日期，流式模式统一汇率
  * 5. spawn 上游进程，pipe stdout 通过 Transform stream
  * 6. 信号转发和退出码传播
  */
 import process from 'node:process';
-import { getExchangeRate } from '../src/exchange-rate.js';
-import { createTextTransform, createJsonTransform } from '../src/output-transform.js';
+import { getExchangeRate, getExchangeRateForDate } from '../src/exchange-rate.js';
+import {
+  createTextTransform,
+  createJsonTransform,
+  createBufferedTextTransform,
+} from '../src/output-transform.js';
 import { resolveBinary } from '../src/binary-resolver.js';
 import { createSpawner, createExitHandler } from '../src/spawner.js';
 
@@ -27,29 +31,58 @@ async function main() {
   const args = process.argv.slice(2);
 
   // b. 检测模式（per D-06）
-  // --help/-h 使用文本模式（帮助输出为纯文本）
-  const isJson = args.includes('--json') && !args.includes('--help') && !args.includes('-h');
+  const isHelp = args.includes('--help') || args.includes('-h');
+  const isJson = args.includes('--json') && !isHelp;
 
-  // c. 解析上游二进制路径
+  // c. 环境变量汇率（用于判断是否可走流式分支）
+  const envRateRaw = process.env.CCUSAGE_CNY_RATE;
+  const hasEnvRate = !!(envRateRaw && /^\d+(\.\d+)?$/.test(envRateRaw));
+
+  // d. 解析上游二进制路径
   const { command, args: cmdArgs } = await resolveBinary(args);
-
-  // d. 异步获取汇率（非阻塞，由 resolveBinary 和 spawn 之间的时间完成）
-  const rate = await getExchangeRate();
 
   // e. 创建 spawn 进程
   const { child, cleanup } = createSpawner(command, cmdArgs);
 
-  // f. 设置退出处理器
-  createExitHandler(child, cleanup);
+  // f. 管道转换 stdout
+  /** @type {Promise<void> | null} */
+  let drainPromise = null;
 
-  // g. 管道转换 stdout
   if (isJson) {
-    // JSON 模式：collect → parse → append costCNY → stringify
-    child.stdout.pipe(createJsonTransform(rate)).pipe(process.stdout);
-  } else {
-    // 文本模式：流式逐块替换 $X.XX → ¥Y.YY
+    // JSON 模式：缓冲 → 按日期汇率 → 追加 exchangeRate 字段
+    const fallbackRate = await getExchangeRate();
+    const getRateForDate = (/** @type {string} */ date) =>
+      getExchangeRateForDate(date, fallbackRate);
+    const transform = createJsonTransform(getRateForDate, fallbackRate);
+    child.stdout.pipe(transform).pipe(process.stdout);
+
+    // 等待异步 flush 完成（JSON transform 在 flush 中 fetch 汇率）
+    drainPromise = new Promise((resolve) => {
+      transform.on('end', () => setImmediate(resolve));
+    });
+  } else if (isHelp || hasEnvRate) {
+    // 流式模式：帮助输出或用户显式设定统一汇率
+    const rate = hasEnvRate
+      ? parseFloat(/** @type {string} */ (envRateRaw))
+      : await getExchangeRate();
     child.stdout.pipe(createTextTransform(rate)).pipe(process.stdout);
+    // 流式模式无需等待（同步 flush）
+  } else {
+    // 缓冲模式：多日期文本表格 → 按日期汇率 → 脚注
+    const currentRate = await getExchangeRate();
+    const getRateForDate = (/** @type {string} */ date) =>
+      getExchangeRateForDate(date, currentRate);
+    const transform = createBufferedTextTransform(getRateForDate, currentRate);
+    child.stdout.pipe(transform).pipe(process.stdout);
+
+    // 等待异步 flush 完成（缓冲 transform 在 flush 中 fetch 多个历史汇率）
+    drainPromise = new Promise((resolve) => {
+      transform.on('end', () => setImmediate(resolve));
+    });
   }
+
+  // g. 设置退出处理器（传入 drainPromise 确保异步转换完成后再退出）
+  createExitHandler(child, cleanup, drainPromise);
 
   // stderr 透传：spawn 时已设为 'inherit'（per D-10），不需额外处理
   // stdin 透传：spawn 时 stdio[0] = 'inherit'，自动透传（per D-04）

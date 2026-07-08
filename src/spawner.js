@@ -54,13 +54,24 @@ export function createSpawner(binaryPath, args) {
  * 监听子进程 exit 事件，在子进程退出后清理信号处理器，
  * 并根据退出码或信号决定当前进程的退出行为。
  *
+ * 如果提供了 `drainPromise`（通常是 process.stdout 的 finish），
+ * 则先等待异步转换完成再退出。这对缓冲模式（createBufferedTextTransform、
+ * createJsonTransform）至关重要——它们的 flush 是异步的，需要时间完成。
+ *
  * @param {import('node:child_process').ChildProcess} child - spawn 返回的子进程
  * @param {() => void} cleanupFn - cleanup 函数（解注册信号处理器）
+ * @param {Promise<void>} [drainPromise] - 可选：等待 stdout 排空完成
  * @returns {import('node:child_process').ChildProcess} 返回 child 用于链式调用
  */
-export function createExitHandler(child, cleanupFn) {
-  child.on('exit', (code, signal) => {
+export function createExitHandler(child, cleanupFn, drainPromise) {
+  child.on('exit', async (code, signal) => {
     cleanupFn();
+
+    // 等待异步转换完成（缓冲模式需要）
+    // 必须在 process.exit() 之前，否则缓冲转换会被截断
+    if (drainPromise) {
+      try { await drainPromise; } catch { /* 静默吞掉 drain 错误 */ }
+    }
 
     if (signal !== null) {
       // 子进程被信号终止，以相同信号退出（per D-05）
