@@ -20,6 +20,7 @@ import {
 } from '../src/output-transform.js';
 import { resolveBinary } from '../src/binary-resolver.js';
 import { createSpawner, createExitHandler } from '../src/spawner.js';
+import { loadCnPricing } from '../src/pricing/cn-provider.js';
 
 /**
  * 主流程
@@ -38,6 +39,13 @@ async function main() {
   const envRateRaw = process.env.CCUSAGE_CNY_RATE;
   const hasEnvRate = !!(envRateRaw && /^\d+(\.\d+)?$/.test(envRateRaw));
 
+  // c2. 非帮助模式时异步加载中国模型定价（并发执行，不阻塞主流程）
+  /** @type {Promise<{ version: string; models: Record<string, unknown> } | null> | null} */
+  let cnPricingPromise = null;
+  if (!isHelp) {
+    cnPricingPromise = loadCnPricing().catch(() => null);
+  }
+
   // d. 解析上游二进制路径
   const { command, args: cmdArgs } = await resolveBinary(args);
 
@@ -50,10 +58,13 @@ async function main() {
 
   if (isJson) {
     // JSON 模式：缓冲 → 按日期汇率 → 追加 exchangeRate 字段
-    const fallbackRate = await getExchangeRate();
+    const [fallbackRate, cnPricing] = await Promise.all([
+      getExchangeRate(),
+      cnPricingPromise ?? Promise.resolve(null),
+    ]);
     const getRateForDate = (/** @type {string} */ date) =>
       getExchangeRateForDate(date, fallbackRate);
-    const transform = createJsonTransform(getRateForDate, fallbackRate);
+    const transform = createJsonTransform(getRateForDate, fallbackRate, cnPricing);
     child.stdout.pipe(transform).pipe(process.stdout);
 
     // 等待异步 flush 完成（JSON transform 在 flush 中 fetch 汇率）
@@ -65,14 +76,19 @@ async function main() {
     const rate = hasEnvRate
       ? parseFloat(/** @type {string} */ (envRateRaw))
       : await getExchangeRate();
-    child.stdout.pipe(createTextTransform(rate)).pipe(process.stdout);
+    // cnPricing 在流式模式中仅用于签名一致性（见 createTextTransform JSDoc 说明）
+    const cnPricing = cnPricingPromise ? await cnPricingPromise : null;
+    child.stdout.pipe(createTextTransform(rate, cnPricing)).pipe(process.stdout);
     // 流式模式无需等待（同步 flush）
   } else {
     // 缓冲模式：多日期文本表格 → 按日期汇率 → 脚注
-    const currentRate = await getExchangeRate();
+    const [currentRate, cnPricing] = await Promise.all([
+      getExchangeRate(),
+      cnPricingPromise ?? Promise.resolve(null),
+    ]);
     const getRateForDate = (/** @type {string} */ date) =>
       getExchangeRateForDate(date, currentRate);
-    const transform = createBufferedTextTransform(getRateForDate, currentRate);
+    const transform = createBufferedTextTransform(getRateForDate, currentRate, cnPricing);
     child.stdout.pipe(transform).pipe(process.stdout);
 
     // 等待异步 flush 完成（缓冲 transform 在 flush 中 fetch 多个历史汇率）

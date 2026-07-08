@@ -1,6 +1,7 @@
 // @ts-check
 import { Transform } from 'node:stream';
-import { asyncPool } from './utils.js';
+import { asyncPool, formatCNY } from './utils.js';
+import { matchCnModel, calcCnCost } from './pricing/cost-calculator.js';
 
 /**
  * 判断字段名是否为费用字段
@@ -162,17 +163,118 @@ async function transformJsonWithRates(data, getRateForDate, fallbackRate) {
   return { ...rest, daily: convertedDaily, summary: convertedSummary };
 }
 
+// ============================================================
+// 中国模型直连 CNY 覆盖
+// ============================================================
+
+/**
+ * 安全获取模型 breakdown 中的 token 数值（支持多字段名变体）
+ *
+ * @param {Record<string, unknown>} mb - modelBreakdown entry
+ * @param {...string} keys - 可能的字段名（按优先级）
+ * @returns {number}
+ */
+function getTokenValue(mb, ...keys) {
+  for (const key of keys) {
+    if (typeof mb[key] === 'number') return mb[key];
+  }
+  return 0;
+}
+
+/**
+ * 在 JSON 模式转换后，覆盖中国模型的 costCNY 为直接人民币计算值
+ *
+ * 遍历 data.daily[].modelBreakdowns 和 data.summary.modelBreakdowns，
+ * 对每个匹配中国模型的 entry，用 calcCnCost 重新计算 costCNY。
+ * 记录新旧 costCNY 差值，调整父级 totalCostCNY。
+ *
+ * @param {*} data - 经过 addCostCNY 处理后的 JSON 数据
+ * @param {{ models: Record<string, unknown> } | null | undefined} cnPricing - 中国模型定价
+ * @returns {*} 覆盖后的数据
+ */
+function applyCnModelOverrides(data, cnPricing) {
+  if (!data || typeof data !== 'object') return data;
+  if (!cnPricing?.models) return data;
+
+  const models = /** @type {Record<string, { input: number; output: number; cacheRead?: number }>} */ (cnPricing.models);
+
+  /**
+   * 处理单个 entry 的 modelBreakdowns，返回调整后的 entry 和 totalAdjustment
+   *
+   * @param {Record<string, unknown>} entry - daily 或 summary entry
+   * @returns {{ entry: Record<string, unknown>; adjustment: number }}
+   */
+  function overrideBreakdowns(entry) {
+    if (!entry || typeof entry !== 'object') return { entry, adjustment: 0 };
+
+    const mbs = entry.modelBreakdowns;
+    if (!Array.isArray(mbs) || mbs.length === 0) return { entry, adjustment: 0 };
+
+    let totalAdjustment = 0;
+
+    const newMbs = mbs.map((/** @type {Record<string, unknown>} */ mb) => {
+      if (!mb || typeof mb !== 'object') return mb;
+
+      const modelName = /** @type {string | undefined} */ (mb.modelName);
+      if (!modelName) return mb;
+
+      const matched = matchCnModel(modelName, models);
+      if (!matched) return mb;
+
+      const inputTokens = getTokenValue(mb, 'inputTokens', 'input_tokens', 'inputTokenCount');
+      const outputTokens = getTokenValue(mb, 'outputTokens', 'output_tokens', 'outputTokenCount');
+      const cacheReadTokens = getTokenValue(mb, 'cacheReadTokens', 'cache_read_tokens');
+
+      const oldCostCNY = /** @type {number} */ (mb.costCNY) || 0;
+      const newCostCNY = calcCnCost(matched.pricing, inputTokens, outputTokens, cacheReadTokens);
+
+      totalAdjustment += newCostCNY - oldCostCNY;
+
+      return { ...mb, costCNY: newCostCNY };
+    });
+
+    let newEntry = { ...entry, modelBreakdowns: newMbs };
+
+    // 调整父级 totalCostCNY
+    if (totalAdjustment !== 0 && typeof entry.totalCostCNY === 'number') {
+      newEntry.totalCostCNY = formatCNY(/** @type {number} */ (entry.totalCostCNY) + totalAdjustment);
+    }
+
+    return { entry: newEntry, adjustment: totalAdjustment };
+  }
+
+  // 处理 daily
+  if (Array.isArray(data.daily)) {
+    const newDaily = data.daily.map((/** @type {unknown} */ entry) => {
+      if (!entry || typeof entry !== 'object') return entry;
+      const { entry: newEntry } = overrideBreakdowns(/** @type {Record<string, unknown>} */ (entry));
+      return newEntry;
+    });
+    data = { ...data, daily: newDaily };
+  }
+
+  // 处理 summary
+  if (data.summary && typeof data.summary === 'object') {
+    const { entry: newSummary } = overrideBreakdowns(/** @type {Record<string, unknown>} */ (data.summary));
+    data = { ...data, summary: newSummary };
+  }
+
+  return data;
+}
+
 /**
  * 创建 JSON 模式的 Transform stream（支持按日期汇率）
  *
  * 收集完整 stdout → JSON.parse → 提取 period → 按日期获取汇率 →
- * 递归查找费用字段 → 追加 CNY 等值 + exchangeRate → JSON.stringify 输出。
+ * 递归查找费用字段 → 追加 CNY 等值 + exchangeRate → 中国模型 costCNY 覆盖 →
+ * JSON.stringify 输出。
  *
  * @param {(date: string) => Promise<number>} getRateForDate - 按日期获取汇率的回调
  * @param {number} fallbackRate - 降级汇率（当前汇率，用于无日期的 entry）
+ * @param {{ models: Record<string, unknown> } | null | undefined} [cnPricing] - 中国模型人民币定价（用于覆盖中国模型的 costCNY）
  * @returns {import('node:stream').Transform}
  */
-export function createJsonTransform(getRateForDate, fallbackRate) {
+export function createJsonTransform(getRateForDate, fallbackRate, cnPricing) {
   /** @type {Buffer[]} */
   const chunks = [];
 
@@ -196,8 +298,9 @@ export function createJsonTransform(getRateForDate, fallbackRate) {
         try {
           const data = JSON.parse(raw);
           const converted = await transformJsonWithRates(data, getRateForDate, fallbackRate);
+          const finalData = applyCnModelOverrides(converted, cnPricing);
           const indent = detectJsonIndent(raw);
-          this.push(JSON.stringify(converted, null, indent), 'utf-8');
+          this.push(JSON.stringify(finalData, null, indent), 'utf-8');
           callback();
         } catch {
           // JSON 解析失败或汇率转换失败，原样透传（不崩溃）
@@ -223,9 +326,15 @@ export function createJsonTransform(getRateForDate, fallbackRate) {
  * 多日期场景使用 createBufferedTextTransform。
  *
  * @param {number} rate - USD→CNY 汇率
+ * @param {object|null|undefined} [cnPricing] - 中国模型人民币定价数据（仅用于签名一致性）
+ *   流式模式下无法使用此参数：streaming transform 逐块输出，无法获取完整表格结构、
+ *   模型名称、各列 token 计数等结构化信息。中国模型直接 CNY 计算仅在缓冲文本模式
+ *   （createBufferedTextTransform）和 JSON 模式（createJsonTransform）中实现。
+ *   流式模式仍统一使用 USD * 汇率方式转换中国模型费用。
  * @returns {import('node:stream').Transform}
  */
-export function createTextTransform(rate) {
+export function createTextTransform(rate, cnPricing) {
+  // cnPricing 在流式模式中不使用（见上方 JSDoc 说明）
   /** @type {string | null} */
   let remainder = null;
 
@@ -446,6 +555,89 @@ function buildFootnote(rateMap) {
 }
 
 /**
+ * 从表格列中解析数值（去除逗号千分位）
+ *
+ * @param {string | undefined} col - 列内容
+ * @returns {number | null} 解析后的数值，无效返回 null
+ */
+function parseNumberColumn(col) {
+  if (!col) return null;
+  const trimmed = col.trim();
+  const num = parseFloat(trimmed.replace(/,/g, ''));
+  return isNaN(num) ? null : num;
+}
+
+/**
+ * 在文本输出中覆盖中国模型行的 cost 值为直接人民币计算
+ *
+ * 解析方式：按 │ 分割行，从 Models 列匹配 "- modelName"，提取 token 计数。
+ * 对匹配中国模型的行，用 calcCnCost 重新计算 cost 并替换。
+ * ANSI 颜色码保持完整。
+ *
+ * @param {string} text - 经过 $→¥ 转换后的文本输出
+ * @param {{ models: Record<string, unknown> } | null | undefined} cnPricing - 中国模型定价数据
+ * @returns {string} 覆盖后的文本
+ */
+function overrideCnTextOutput(text, cnPricing) {
+  if (!cnPricing?.models) return text;
+
+  const models = /** @type {Record<string, { input: number; output: number; cacheRead?: number }>} */ (cnPricing.models);
+
+  // 文本已按行分割（保留原始 ANSI 码）
+  const lines = text.split('\n');
+
+  const resultLines = lines.map((line) => {
+    // 用 stripped 版本解析列内容（去掉 ANSI 码不影响 │ 分隔符）
+    const stripped = stripAnsi(line);
+    const parts = stripped.split('│');
+
+    // 需要至少 10 个部分（9 列 + 前导空）
+    if (parts.length < 10) return line;
+
+    // 列 3（index 3）是 Models 列，提取模型名
+    const modelCol = (parts[3] || '').trim();
+    const modelMatch = modelCol.match(/^-\s+(\S+)/);
+    if (!modelMatch) return line;
+
+    const modelName = modelMatch[1];
+    const matched = matchCnModel(modelName, models);
+    if (!matched) return line;
+
+    // 解析 token 计数列
+    const inputTokens = parseNumberColumn(parts[4]);
+    const outputTokens = parseNumberColumn(parts[5]);
+    if (inputTokens === null || outputTokens === null) return line;
+
+    const cacheReadTokens = parseNumberColumn(parts[7]) || 0;
+
+    const directCost = calcCnCost(matched.pricing, inputTokens, outputTokens, cacheReadTokens);
+
+    // 在原始行（含 ANSI）中替换 cost 值
+    // 定位到原始行的 cost 列（同样按 │ 分割）
+    const rawParts = line.split('│');
+    if (rawParts.length < 10) return line;
+
+    // 列 9 是 Cost 列，替换其中的 ¥X.XX 值
+    rawParts[9] = rawParts[9].replace(
+      /(\s*)(\x1b\[[\d;]+m)?[$¥]\d+\.?\d*/,
+      (match, spaces, ansi, _amount) => {
+        const newValue = `¥${directCost.toFixed(2)}`;
+        const ansiCode = ansi || '';
+        const visibleWidth = match.length - ansiCode.length;
+        if (spaces.length < 2 && !ansiCode) {
+          return spaces + newValue;
+        }
+        return ansiCode + newValue.padStart(visibleWidth);
+      }
+    );
+
+    return rawParts.join('│');
+  });
+
+  return resultLines.join('\n');
+}
+
+/**
  * 创建文本模式的缓冲 Transform stream（支持按日期汇率）
  *
  * 缓冲全部 stdout → 解析日期组 → 获取各日期汇率 →
@@ -453,9 +645,10 @@ function buildFootnote(rateMap) {
  *
  * @param {(date: string) => Promise<number>} getRateForDate - 按日期获取汇率的回调
  * @param {number} fallbackRate - 降级汇率（当前汇率，用于无日期场景的回退）
+ * @param {{ models: Record<string, unknown> } | null | undefined} [cnPricing] - 中国模型人民币定价（用于文本模式覆盖中国模型行 cost）
  * @returns {import('node:stream').Transform}
  */
-export function createBufferedTextTransform(getRateForDate, fallbackRate = 7.2) {
+export function createBufferedTextTransform(getRateForDate, fallbackRate = 7.2, cnPricing) {
   /** @type {Buffer[]} */
   const chunks = [];
 
@@ -483,9 +676,15 @@ export function createBufferedTextTransform(getRateForDate, fallbackRate = 7.2) 
 
           if (!detected) {
             // 未检测到日期格式 → 回退到流式（使用当前汇率，无需缓冲）
+            // 仍收集完整输出以应用中国模型文本覆盖
             const fallbackTransform = createTextTransform(fallbackRate);
-            fallbackTransform.on('data', (chunk) => this.push(chunk));
-            fallbackTransform.on('end', () => callback());
+            /** @type {string} */
+            let fbText = '';
+            fallbackTransform.on('data', (chunk) => { fbText += chunk; });
+            fallbackTransform.on('end', () => {
+              this.push(overrideCnTextOutput(fbText, cnPricing), 'utf-8');
+              callback();
+            });
             fallbackTransform.write(raw, 'utf-8');
             fallbackTransform.end();
             return;
@@ -549,7 +748,10 @@ export function createBufferedTextTransform(getRateForDate, fallbackRate = 7.2) 
           output = output.replace(/Cost \(USD\)/g, 'Cost (CNY)');
           output = output.replace(/\(USD\)/g, '(CNY)');
 
-          // 6. 追加脚注
+          // 6. 中国模型文本覆盖（在标准 $→¥ 转换后，进一步优化中国模型行）
+          output = overrideCnTextOutput(output, cnPricing);
+
+          // 7. 追加脚注
           output += buildFootnote(rateMap);
 
           this.push(output, 'utf-8');
