@@ -363,12 +363,12 @@ for (const p of platforms) {
 | A3 | 跨平台代码在非 macOS 上行为一致,无需 Phase 2 实际验证 | Common Pitfalls | D-08 已明确:Phase 2 仅声明兼容,完整验证矩阵留到 Phase 3 |
 | A4 | `vitest` 的 [SUS] 标记是 slopcheck 误报 | Package Legitimacy Audit | vitest 是 Vite 团队维护的知名测试框架(16M+ 周下载),误报确认 |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **[项目仓库 URL]**
+1. **[项目仓库 URL]** — RESOLVED: 在 Phase 2 使用占位 URL `git+https://github.com/user/ccusage-cn.git`，用户可在创建仓库后替换。不阻塞 Phase 2 发布。
    - 什么已知: D-11 要求填写 `repository` 和 `homepage` 字段
-   - 什么不清楚: 项目 GitHub 仓库的具体 URL(当前未创建或未公开)
-   - 建议: 如果已有仓库存放此项目,填入 URL。否则留空并在 Phase 3 创建仓库时补充。**不阻塞 Phase 2 发布。**
+   - 什么不清楚: 项目 GitHub 仓库的具体 URL（当前未创建或未公开）
+   - 决策: 使用占位 URL，计划中已实现（Task 1 step (e)）
 
 ## Environment Availability
 
