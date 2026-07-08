@@ -1,7 +1,6 @@
 {
   "name": "ccusage-cn",
-  "version": "0.1.0",
-  "private": true,
+  "version": "1.0.0",
   "type": "module",
   "bin": {
     "ccusage-cn": "./bin/cli.js"
@@ -13,14 +12,34 @@
     "README.md"
   ],
   "scripts": {
-    "test": "vitest run"
+    "test": "vitest run",
+    "prepublishOnly": "npm test && publint"
   },
   "dependencies": {
     "ccusage": "^20.0.0"
   },
   "devDependencies": {
+    "publint": "^0.3.12",
     "vitest": "^3.0.0"
   },
+  "description": "ccusage 的人民币（CNY）适配版本 — 分析 AI 编程工具 Token 用量，费用以人民币展示",
+  "keywords": [
+    "ccusage",
+    "token",
+    "usage",
+    "ai",
+    "cli",
+    "cn",
+    "cny",
+    "chinese",
+    "renminbi"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/user/ccusage-cn.git"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/user/ccusage-cn#readme",
   "engines": {
     "node": ">=18"
   },
