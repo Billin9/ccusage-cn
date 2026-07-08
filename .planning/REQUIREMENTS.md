@@ -9,10 +9,10 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### CLI 兼容性 (CLI)
 
-- [ ] **CLI-01**: 所有上游 ccusage 命令和参数完全透传，用户使用 `bunx ccusage-cn <args>` 与 `bunx ccusage <args>` 行为一致
-- [ ] **CLI-02**: 上游进程的退出码正确传播到 ccusage-cn
-- [ ] **CLI-03**: 上游进程的信号（SIGINT、SIGTERM）正确处理和转发，不产生孤儿进程
-- [ ] **CLI-04**: `--json` 模式输出的 JSON 结构保持完整，追加 `costCNY` 字段而非覆盖原始 `costUSD`
+- [x] **CLI-01**: 所有上游 ccusage 命令和参数完全透传，用户使用 `bunx ccusage-cn <args>` 与 `bunx ccusage <args>` 行为一致
+- [x] **CLI-02**: 上游进程的退出码正确传播到 ccusage-cn
+- [x] **CLI-03**: 上游进程的信号（SIGINT、SIGTERM）正确处理和转发，不产生孤儿进程
+- [x] **CLI-04**: `--json` 模式输出的 JSON 结构保持完整，追加 `costCNY` 字段而非覆盖原始 `costUSD`
 
 ### 费用转换 (COST)
 
@@ -29,9 +29,9 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### 输出保真度 (OUT)
 
-- [ ] **OUT-01**: ANSI 彩色输出保留（通过 `FORCE_COLOR=1` 环境变量）
+- [x] **OUT-01**: ANSI 彩色输出保留（通过 `FORCE_COLOR=1` 环境变量）
 - [x] **OUT-02**: 表格列对齐在人民币转换后保持合理（不因位数变化导致严重错位）
-- [ ] **OUT-03**: `--help` 输出透传上游帮助信息，附加 ccusage-cn 特有选项说明
+- [x] **OUT-03**: `--help` 输出透传上游帮助信息，附加 ccusage-cn 特有环境变量说明
 
 ### 上游更新策略 (UPD)
 
@@ -73,10 +73,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| CLI-01 | 阶段 1 | Pending |
-| CLI-02 | 阶段 1 | Pending |
-| CLI-03 | 阶段 1 | Pending |
-| CLI-04 | 阶段 1 | Pending |
+| CLI-01 | 阶段 1 | Completed |
+| CLI-02 | 阶段 1 | Completed |
+| CLI-03 | 阶段 1 | Completed |
+| CLI-04 | 阶段 1 | Completed |
 | COST-01 | 阶段 1 | Completed |
 | COST-02 | 阶段 1 | Completed |
 | COST-03 | 阶段 1 | Completed |
@@ -84,9 +84,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | DIST-01 | 阶段 2 | Pending |
 | DIST-02 | 阶段 1 | Completed |
 | DIST-03 | 阶段 2 | Pending |
-| OUT-01 | 阶段 1 | Pending |
+| OUT-01 | 阶段 1 | Completed |
 | OUT-02 | 阶段 1 | Completed |
-| OUT-03 | 阶段 1 | Pending |
+| OUT-03 | 阶段 1 | Completed |
 | UPD-01 | 阶段 1 | Completed |
 | UPD-02 | 阶段 3 | Pending |
 
