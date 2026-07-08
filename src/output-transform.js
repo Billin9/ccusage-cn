@@ -95,10 +95,21 @@ export function createTextTransform(rate) {
         text = text.slice(0, -partial[0].length);
       }
 
-      // USD → CNY（仅替换完整的 $ 数字）
-      text = text.replace(/\$(\d+\.?\d*)/g, (match, amount) => {
+      // USD → CNY（捕获前导空格，保持表格列宽不变）
+      // 乘以汇率后数字位数可能增加（如 $2.58 → ¥18.58），
+      // 必须保持替换前后字符总宽度一致，否则表格列错位。
+      // 仅当有 ≥2 个前导空格时视为表格列填充（单个空格通常是词间分隔）
+      text = text.replace(/( *)\$(\d+\.?\d*)/g, (match, spaces, amount) => {
         const cny = (parseFloat(amount) * rate).toFixed(2);
-        return `¥${cny}`;
+        const newValue = `¥${cny}`;
+
+        if (spaces.length < 2) {
+          // 词间分隔（0~1 空格），保持原样不调整
+          return spaces + newValue;
+        }
+
+        // 表格列填充（≥2 空格），padStart 保证替换后总宽度不变
+        return newValue.padStart(match.length);
       });
 
       // 替换列标题（含分行场景：表头中 Cost 和 (USD) 可能在不同行）
