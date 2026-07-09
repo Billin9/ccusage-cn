@@ -13,7 +13,10 @@ ccusage-cn is the CNY (Chinese Yuan) adaptation of [ccusage](https://github.com/
 ## 快速上手 / Quick Start
 
 ```bash
-# 一句话查看今日 Claude Code 费用（macOS）
+# 一句话查看今天 Claude Code 费用（macOS）
+bunx ccusage-cn@latest claude -b --since $(date +%Y%m%d)
+
+# 看昨天和今天（macOS）
 bunx ccusage-cn@latest claude -b --since $(date -v-1d +%Y%m%d)
 
 # Linux 用户替换 date 语法
@@ -72,14 +75,33 @@ ccusage 支持 15+ AI 编程工具，通过子命令指定来源：
 
 ### 你每天都在用的
 
+#### 只看今天
+
 ```bash
-# 查看 Claude Code 昨日费用（简要模式）
+# 简要模式
+bunx ccusage-cn@latest claude -b --since $(date +%Y%m%d)
+
+# 按会话查看
+bunx ccusage-cn@latest claude session -b --since $(date +%Y%m%d)
+```
+
+#### 看昨天和今天
+
+```bash
+# 简要模式
 bunx ccusage-cn@latest claude -b --since $(date -v-1d +%Y%m%d)
 
-# 查看 Claude Code 最近会话区块
+# 按会话查看
+bunx ccusage-cn@latest claude session -b --since $(date -v-1d +%Y%m%d)
+```
+
+#### 其他常用
+
+```bash
+# 查看最近会话区块
 bunx ccusage-cn@latest claude blocks --recent
 
-# 查看 Claude Code 当前活跃会话（实时费用）
+# 查看当前活跃会话（实时费用）
 bunx ccusage-cn@latest claude blocks --active
 ```
 
@@ -99,11 +121,9 @@ ccusage-cn blocks         # 按 Token 区块明细
 # 指定日期范围
 ccusage-cn claude daily --since 2026-07-01 --until 2026-07-08
 
-# 最近一天（macOS）
-ccusage-cn claude -b --since $(date -v-1d +%Y%m%d)
-
-# 最近一天（Linux）
-ccusage-cn claude -b --since $(date -d '1 day ago' +%Y%m%d)
+# 按日期过滤（也支持 --since 和 --until 组合使用）
+ccusage-cn claude -b --since 2026-07-08
+ccusage-cn claude -b --until 2026-07-08
 ```
 
 ### 常用标志
@@ -168,7 +188,7 @@ ccusage-cn 与上游 ccusage 的核心差异仅为费用显示单位，其余 10
 ## 兼容的上游版本 / Compatible Upstream Version
 
 - **上游依赖**：`ccusage@^20.0.0`（caret 范围，自动兼容 patch 和 minor 更新）
-- **ccusage-cn 版本**：`1.0.3`（独立语义化版本，不与上游版本号关联）
+- **ccusage-cn 版本**：`1.0.6`（独立语义化版本，不与上游版本号关联）
 
 上游发布 patch/minor 更新时，用户执行 `bunx ccusage-cn@latest` 即可自动使用兼容的最新版本。上游 CI 每周自动检测兼容性。
 
