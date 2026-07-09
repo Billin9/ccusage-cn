@@ -22,9 +22,9 @@ import { getCacheDir } from '../utils.js';
 /** 定价文件包内路径（发布后位于 pricing/cn-models.json） */
 const BUNDLED_FILE_PATH = '../../pricing/cn-models.json';
 
-/** GitHub Raw 内容地址（从 package.json 中的 repository 推导） */
+/** GitHub Raw 内容地址（通过 jsDelivr CDN 访问，国内可用性更好） */
 const GITHUB_RAW_BASE =
-  'https://raw.githubusercontent.com/user/ccusage-cn/main/pricing/cn-models.json';
+  'https://cdn.jsdelivr.net/gh/Billin9/ccusage-cn@master/pricing/cn-models.json';
 
 /** 缓存文件名 */
 const CACHE_FILENAME = 'cn-pricing-cache.json';

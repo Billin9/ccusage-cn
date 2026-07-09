@@ -259,6 +259,69 @@ function applyCnModelOverrides(data, cnPricing) {
     data = { ...data, summary: newSummary };
   }
 
+  // 处理 blocks（与 daily/session 结构不同：使用 tokenCounts + models[] 而非 modelBreakdowns[]）
+  if (Array.isArray(data.blocks)) {
+    const newBlocks = data.blocks.map((/** @type {unknown} */ block) => {
+      if (!block || typeof block !== 'object') return block;
+      const b = /** @type {Record<string, unknown>} */ (block);
+
+      // 跳过 gap / inactive blocks
+      if (b.isGap) return block;
+
+      const blockModels = /** @type {string[]} */ (b.models) || [];
+      const tokenCounts = /** @type {Record<string, number> | undefined} */ (b.tokenCounts);
+
+      if (!tokenCounts || blockModels.length === 0) return block;
+
+      // 对单模型 block，直接计算中国模型费用
+      if (blockModels.length === 1) {
+        const modelName = blockModels[0];
+        const matched = matchCnModel(modelName, models);
+        if (matched) {
+          const inputTokens = tokenCounts.inputTokens || 0;
+          const outputTokens = tokenCounts.outputTokens || 0;
+          const cacheReadTokens = tokenCounts.cacheReadInputTokens || 0;
+          const newCostCNY = calcCnCost(matched.pricing, inputTokens, outputTokens, cacheReadTokens);
+          return { ...b, costCNY: newCostCNY };
+        }
+      }
+
+      // 多模型 block 无法拆分 per-model token，保持现有 costCNY
+      return block;
+    });
+    data = { ...data, blocks: newBlocks };
+  }
+
+  // 处理 sessions（结构类似 daily，但用 sessions 数组）
+  if (Array.isArray(data.sessions)) {
+    const newSessions = data.sessions.map((/** @type {unknown} */ entry) => {
+      if (!entry || typeof entry !== 'object') return entry;
+      const { entry: newEntry } = overrideBreakdowns(/** @type {Record<string, unknown>} */ (entry));
+      return newEntry;
+    });
+    data = { ...data, sessions: newSessions };
+  }
+
+  // 处理 months（结构类似 daily，但用 months 数组）
+  if (Array.isArray(data.months)) {
+    const newMonths = data.months.map((/** @type {unknown} */ entry) => {
+      if (!entry || typeof entry !== 'object') return entry;
+      const { entry: newEntry } = overrideBreakdowns(/** @type {Record<string, unknown>} */ (entry));
+      return newEntry;
+    });
+    data = { ...data, months: newMonths };
+  }
+
+  // 处理 weeks（结构类似 daily，但用 weeks 数组）
+  if (Array.isArray(data.weeks)) {
+    const newWeeks = data.weeks.map((/** @type {unknown} */ entry) => {
+      if (!entry || typeof entry !== 'object') return entry;
+      const { entry: newEntry } = overrideBreakdowns(/** @type {Record<string, unknown>} */ (entry));
+      return newEntry;
+    });
+    data = { ...data, weeks: newWeeks };
+  }
+
   return data;
 }
 
@@ -578,61 +641,630 @@ function parseNumberColumn(col) {
  * @param {{ models: Record<string, unknown> } | null | undefined} cnPricing - 中国模型定价数据
  * @returns {string} 覆盖后的文本
  */
+/**
+ * 从行中提取费用数值
+ *
+ * @param {string} line - 表格行（含 ANSI）
+ * @param {number} costIdx - Cost 列索引
+ * @returns {number} 提取的费用值，解析失败返回 0
+ */
+function extractCostFromLine(line, costIdx) {
+  const rawParts = line.split('│');
+  if (rawParts.length <= costIdx) return 0;
+  const stripped = stripAnsi(rawParts[costIdx]);
+  const match = stripped.match(/[¥$](\d+\.?\d*)/);
+  return match ? parseFloat(match[1]) : 0;
+}
+
+/**
+ * 更新行中 Cost 列的值为指定金额
+ *
+ * @param {string} line - 原始行（含 ANSI）
+ * @param {number} costIdx - Cost 列索引
+ * @param {number} newCost - 新的费用值
+ * @returns {string} 更新后的行
+ */
+function updateLineCost(line, costIdx, newCost) {
+  const rawParts = line.split('│');
+  if (rawParts.length <= costIdx) return line;
+  rawParts[costIdx] = rawParts[costIdx].replace(
+    /(\s*)(\x1b\[[\d;]+m)?[$¥]\d+\.?\d*/,
+    (match, spaces, ansi) => {
+      const ansiCode = ansi || '';
+      const newValue = `¥${newCost.toFixed(2)}`;
+      const visibleWidth = match.length - ansiCode.length;
+      if (spaces.length < 2 && !ansiCode) {
+        return spaces + newValue;
+      }
+      return ansiCode + newValue.padStart(visibleWidth);
+    }
+  );
+  return rawParts.join('│');
+}
+
+/**
+ * 检测是否为 blocks 格式的表格输出
+ *
+ * blocks 格式特征：
+ * - 表头含 "Block Start" 和 "Duration"
+ * - 6 列格式：Block Start | Duration/Status | Models | Tokens | % | Cost
+ *
+ * @param {string} text - 输出文本
+ * @returns {boolean}
+ */
+function isBlocksFormat(text) {
+  return /Block Start/.test(text) && /Duration/.test(text);
+}
+
+/**
+ * 处理 blocks 格式文本的中国模型费用覆盖
+ *
+ * blocks 是 6 列格式：Block Start | Duration/Status | Models | Tokens | % | Cost
+ * 与 daily/session 的 8-10 列格式完全不同。
+ *
+ * 策略：
+ * - 单模型 block + 中国模型 → 直接 CNY 计算（用 totalTokens 按输入价估算）
+ * - 多模型 block → 无法从文本中获取 per-model token 分解，保持原有费用
+ * - gap/inactive/projection 行 → 跳过
+ *
+ * @param {string} text - 经过 $→¥ 转换后的文本输出
+ * @param {Record<string, { input: number; output: number; cacheRead?: number }>} models - 中国模型定价
+ * @returns {string} 覆盖后的文本
+ */
+function overrideBlocksTextOutput(text, models) {
+  const rawLines = text.split('\n');
+
+  // =========================================================
+  // Phase 1：合并模型列换行
+  // =========================================================
+  // blocks 中多模型时，第一行 "- " 截断，后续行是模型名续行：
+  //   Line N:   │ ... │              │ -                │ ...
+  //   Line N+1: │ ... │              │ deepseek-v4-pro  │ ...
+  //   Line N+2: │ ... │              │ - glm-5.2        │ ...
+  const lines = [];
+  for (let i = 0; i < rawLines.length; i++) {
+    const stripped = stripAnsi(rawLines[i]);
+    const parts = stripped.split('│');
+
+    // blocks 有 6 列 → 8 parts（含首尾空 parts）
+    if (parts.length >= 7) {
+      const modelCol = (parts[3] || '').trim();
+      const tokensCol = (parts[4] || '').trim();
+
+      // 检测截断的 "- "（只有 dash，后面无模型名）且有 token 数据（说明这是主行）
+      if (/^-\s*$/.test(modelCol) && tokensCol && tokensCol !== '-') {
+        // 收集后续行中的模型名
+        /** @type {string[]} */
+        const modelNames = [];
+        let j = i + 1;
+        while (j < rawLines.length) {
+          const nextStripped = stripAnsi(rawLines[j]);
+          const nextParts = nextStripped.split('│');
+          if (nextParts.length < 7) break;
+
+          const nextFirstCol = (nextParts[1] || '').trim();
+          const nextModelCol = (nextParts[3] || '').trim();
+          const nextTokensCol = (nextParts[4] || '').trim();
+
+          // 如果下一行有自己的 token 数据或第一列非空 → 不是续行
+          if (nextFirstCol || (nextTokensCol && nextTokensCol !== '-')) break;
+
+          if (!nextModelCol) break;
+
+          // 检测模型名（可能带 "- " 前缀，也可能是纯续行）
+          const nameMatch = nextModelCol.match(/^-\s+(.+)/);
+          if (nameMatch) {
+            modelNames.push(nameMatch[1]);
+          } else if (nextModelCol && !/^[┌┐├┤└┘┴┬┼─═]/.test(nextModelCol) && !/^-\s*$/.test(nextModelCol)) {
+            // 纯模型名续行（无前导 "-"），排除空的 "- " 占位行
+            modelNames.push(nextModelCol);
+          } else {
+            break;
+          }
+          j++;
+        }
+
+        if (modelNames.length > 0) {
+          // 重建模型列：用第一个模型名替换截断的 "- "
+          const rawParts = rawLines[i].split('│');
+          const firstModel = modelNames[0];
+          const restModels = modelNames.slice(1);
+          rawParts[3] = rawParts[3].replace(/-\s*$/, `- ${firstModel}`);
+          // 追加其余模型名
+          if (restModels.length > 0) {
+            rawParts[3] = rawParts[3].trimEnd() + ', ' + restModels.join(', ');
+          }
+          lines.push(rawParts.join('│'));
+          i = j - 1; // 跳过已合并的行
+          continue;
+        }
+      }
+    }
+    lines.push(rawLines[i]);
+  }
+
+  // =========================================================
+  // Phase 2：逐行处理，对中国模型单模型 block 做直接 CNY 计算
+  // =========================================================
+  const resultLines = [];
+  for (let i = 0; i < lines.length; i++) {
+    const stripped = stripAnsi(lines[i]);
+    const parts = stripped.split('│');
+
+    if (parts.length < 7) {
+      resultLines.push(lines[i]);
+      continue;
+    }
+
+    const firstCol = (parts[1] || '').trim();
+    const statusCol = (parts[2] || '').trim();
+    const modelCol = (parts[3] || '').trim();
+    const tokensCol = (parts[4] || '').trim();
+
+    // 跳过分隔线和非数据行
+    if (!firstCol || /^[┌┐├┤└┘┴┬┼─═╭╮╰╯]/.test(firstCol)) {
+      resultLines.push(lines[i]);
+      continue;
+    }
+
+    // 跳过 gap / inactive 行（tokens 为 "-"）
+    if (tokensCol === '-') {
+      resultLines.push(lines[i]);
+      continue;
+    }
+
+    // 跳过 REMAINING / PROJECTED 行
+    if (statusCol === 'REMAINING' || statusCol === 'PROJECTED') {
+      resultLines.push(lines[i]);
+      continue;
+    }
+
+    // 从模型列提取模型名：只支持单模型（如 "- glm-5.2"）
+    const modelMatch = modelCol.match(/^-\s+(\S+)/);
+    if (!modelMatch) {
+      resultLines.push(lines[i]);
+      continue;
+    }
+
+    // 检查是否包含多个模型（含逗号分隔）
+    if (modelCol.includes(',')) {
+      // 多模型 block，无法从文本拆分 per-model token → 保持原值
+      resultLines.push(lines[i]);
+      continue;
+    }
+
+    // 宽终端下，多模型 block 的模型名不换行而是分布在后续行
+    // 检查下一行是否为模型续行（第一列为空、Models 列有 "- modelName"、无 token 数据）
+    if (i + 1 < lines.length) {
+      const nextStripped = stripAnsi(lines[i + 1]);
+      const nextParts = nextStripped.split('│');
+      if (nextParts.length >= 7) {
+        const nextFirstCol = (nextParts[1] || '').trim();
+        const nextModelCol = (nextParts[3] || '').trim();
+        const nextTokensCol = (nextParts[4] || '').trim();
+        // 下一行是模型续行：第一列为空、模型列非空且以 "- " 开头、无 token
+        if (!nextFirstCol && nextModelCol && /^-\s+/.test(nextModelCol)
+            && (!nextTokensCol || nextTokensCol === '')) {
+          // 多模型 block → 保持原值
+          resultLines.push(lines[i]);
+          continue;
+        }
+      }
+    }
+
+    const modelName = modelMatch[1];
+    const matched = matchCnModel(modelName, models);
+    if (!matched) {
+      resultLines.push(lines[i]);
+      continue;
+    }
+
+    // 提取 token 总数
+    const totalTokens = parseNumberColumn(tokensCol);
+    if (totalTokens === null) {
+      resultLines.push(lines[i]);
+      continue;
+    }
+
+    // blocks 文本模式只有 totalTokens，无 input/output/cacheRead 分解
+    // 典型 Claude Code 使用模式：~80% cacheRead + ~15% input + ~5% output
+    // 使用此估算比例计算费用，提供合理近似值
+    const estInput = Math.round(totalTokens * 0.15);
+    const estOutput = Math.round(totalTokens * 0.05);
+    const estCacheRead = Math.round(totalTokens * 0.80);
+
+    const directCost = calcCnCost(matched.pricing, estInput, estOutput, estCacheRead);
+    // blocks 的 Cost 列在 parts[6]
+    resultLines.push(updateLineCost(lines[i], 6, directCost));
+  }
+
+  return resultLines.join('\n');
+}
+
 function overrideCnTextOutput(text, cnPricing) {
   if (!cnPricing?.models) return text;
 
   const models = /** @type {Record<string, { input: number; output: number; cacheRead?: number }>} */ (cnPricing.models);
 
-  // 文本已按行分割（保留原始 ANSI 码）
-  const lines = text.split('\n');
+  // 检测 blocks 格式（6 列表格），走专用处理路径
+  if (isBlocksFormat(text)) {
+    return overrideBlocksTextOutput(text, models);
+  }
 
-  const resultLines = lines.map((line) => {
-    // 用 stripped 版本解析列内容（去掉 ANSI 码不影响 │ 分隔符）
-    const stripped = stripAnsi(line);
+  // 检测 compact 格式（5-6 列，无 Cache/Total Tokens 列）
+  // compact 表头特征：有 "Cost" 和 "Models" 但无 "Cache" 和 "Total Tokens"
+  const isCompact = (() => {
+    for (const line of text.split('\n')) {
+      const plain = stripAnsi(line);
+      if (/Cost/.test(plain) && /Models/.test(plain)) {
+        return !/Cache/.test(plain) && !/Total Tokens/.test(plain);
+      }
+    }
+    return false;
+  })();
+
+  // compact 格式使用不同的列索引和最小 parts 数
+  const MIN_PARTS = isCompact ? 7 : 10;
+
+  // 文本已按行分割（保留原始 ANSI 码）
+  const rawLines = text.split('\n');
+
+  // =========================================================
+  // Phase 1：合并在终端窗口中换行的子行
+  // =========================================================
+  // 当模型名太长时，上游 CLI 会将 └─ modelName 拆成两行：
+  //   Line N:   │  └─                 │  (token数据) ...
+  //   Line N+1: │ deepseek-v4-flash   │  (空) ...
+  // 合并后：│  └─ deepseek-v4-flash │ (token数据) ...
+  //
+  // 同样处理组头模型列表换行：
+  //   Line N:   │ 2026-07  │ -                 │ 27,499,186 │ ...
+  //   Line N+1: │          │ deepseek-v4-flash │            │ ...
+  //   Line N+2: │          │ - deepseek-v4-pro │            │ ...
+  // 合并后：│ 2026-07  │ - deepseek-v4-flash, - deepseek-v4-pro │ 27,499,186 │ ...
+  const lines = [];
+  for (let i = 0; i < rawLines.length; i++) {
+    const stripped = stripAnsi(rawLines[i]);
     const parts = stripped.split('│');
 
-    // 需要至少 10 个部分（9 列 + 前导空）
-    if (parts.length < 10) return line;
-
-    // 列 3（index 3）是 Models 列，提取模型名
-    const modelCol = (parts[3] || '').trim();
-    const modelMatch = modelCol.match(/^-\s+(\S+)/);
-    if (!modelMatch) return line;
-
-    const modelName = modelMatch[1];
-    const matched = matchCnModel(modelName, models);
-    if (!matched) return line;
-
-    // 解析 token 计数列
-    const inputTokens = parseNumberColumn(parts[4]);
-    const outputTokens = parseNumberColumn(parts[5]);
-    if (inputTokens === null || outputTokens === null) return line;
-
-    const cacheReadTokens = parseNumberColumn(parts[7]) || 0;
-
-    const directCost = calcCnCost(matched.pricing, inputTokens, outputTokens, cacheReadTokens);
-
-    // 在原始行（含 ANSI）中替换 cost 值
-    // 定位到原始行的 cost 列（同样按 │ 分割）
-    const rawParts = line.split('│');
-    if (rawParts.length < 10) return line;
-
-    // 列 9 是 Cost 列，替换其中的 ¥X.XX 值
-    rawParts[9] = rawParts[9].replace(
-      /(\s*)(\x1b\[[\d;]+m)?[$¥]\d+\.?\d*/,
-      (match, spaces, ansi, _amount) => {
-        const newValue = `¥${directCost.toFixed(2)}`;
-        const ansiCode = ansi || '';
-        const visibleWidth = match.length - ansiCode.length;
-        if (spaces.length < 2 && !ansiCode) {
-          return spaces + newValue;
+    // --- 处理 └─ 子行换行（在 Date/Session 列） ---
+    if (parts.length >= MIN_PARTS && i + 1 < rawLines.length) {
+      const dateCol = (parts[1] || '').trim();
+      const truncatedMatch = dateCol.match(/^└─\s*(\S*)$/);
+      if (truncatedMatch) {
+        const capturedName = truncatedMatch[1];
+        if (!capturedName || capturedName.length <= 3) {
+          const nextStripped = stripAnsi(rawLines[i + 1]);
+          const nextParts = nextStripped.split('│');
+          if (nextParts.length >= 2) {
+            const nextDateCol = (nextParts[1] || '').trim();
+            if (nextDateCol && !/^[└├─┌┐┘┴┬┼]/.test(nextDateCol) && /^\S/.test(nextDateCol)) {
+              const rawParts = rawLines[i].split('│');
+              const fullName = capturedName ? (capturedName + nextDateCol) : nextDateCol;
+              rawParts[1] = rawParts[1].replace(/└─\s*\S*/, `└─ ${fullName}`);
+              lines.push(rawParts.join('│'));
+              i++;
+              continue;
+            }
+          }
         }
-        return ansiCode + newValue.padStart(visibleWidth);
       }
-    );
+    }
 
-    return rawParts.join('│');
-  });
+    // --- 处理组头模型列表换行（在 Models 列） ---
+    // 模式：组头行 Models 列为 "- " 截断（或 "- modelName" 后跟续行），
+    // 后续行第一列为空、Models 列有内容
+    if (parts.length >= MIN_PARTS && i + 1 < rawLines.length) {
+      const firstCol = (parts[1] || '').trim();
+      const modelCol = (parts[2] || '').trim();
+
+      // 检测 Model 列是否有截断的 "- "（只有 dash space，后面无完整模型名）
+      const isTruncatedDash = /^-\s*$/.test(modelCol) || /^-\s+\S+$/.test(modelCol);
+
+      // 也检查 parts[3]（10 列 Agent 视图的 Models 列）
+      const modelCol3 = parts.length >= 12 ? (parts[3] || '').trim() : '';
+      const isTruncatedDash3 = /^-\s*$/.test(modelCol3) || /^-\s+\S+$/.test(modelCol3);
+
+      if (firstCol && !/^[┌┐├┤└┘┴┬┼─═╭╮╰╯]/.test(firstCol) && firstCol !== 'Total'
+          && (isTruncatedDash || isTruncatedDash3)) {
+        // 收集后续行中的模型名
+        /** @type {string[]} */
+        const extraModels = [];
+        const activeModelCol = isTruncatedDash3 ? 3 : 2;
+        let j = i + 1;
+        while (j < rawLines.length) {
+          const nextStripped = stripAnsi(rawLines[j]);
+          const nextParts = nextStripped.split('│');
+          if (nextParts.length < 10) break;
+
+          const nextFirstCol = (nextParts[1] || '').trim();
+          const nextModelCol = (nextParts[activeModelCol] || '').trim();
+          // 检查下一行的 Input 列是否有数据（有数据说明是新组头）
+          const inputCol = activeModelCol + 1;
+          const nextInput = (nextParts[inputCol] || '').trim();
+
+          // 如果下一行第一列非空或有 token 数据 → 不是续行
+          if (nextFirstCol || nextInput) break;
+
+          // 提取模型名
+          const nameMatch = nextModelCol.match(/^-\s+(.+)/);
+          if (nameMatch) {
+            extraModels.push(nameMatch[1]);
+          } else if (nextModelCol && !/^[┌┐├┤└┘┴┬┼─═]/.test(nextModelCol) && /^\S/.test(nextModelCol) && !/^-\s*$/.test(nextModelCol)) {
+            // 纯模型名续行（无前导 "-"），追加到上一个模型，排除空的 "- " 占位行
+            if (extraModels.length > 0) {
+              extraModels[extraModels.length - 1] += nextModelCol;
+            }
+          } else {
+            break;
+          }
+          j++;
+        }
+
+        if (extraModels.length > 0) {
+          const rawParts = rawLines[i].split('│');
+          // 替换截断的 "- " 为完整模型列表
+          const allModels = extraModels.map(m => `- ${m}`).join(', ');
+          rawParts[activeModelCol] = rawParts[activeModelCol].replace(/-\s*\S*$/, allModels);
+          lines.push(rawParts.join('│'));
+          i = j - 1; // 跳过已合并的行
+          continue;
+        }
+      }
+    }
+
+    lines.push(rawLines[i]);
+  }
+
+  // =========================================================
+  // Phase 2：逐行处理，收集子行费用并按组汇总
+  //
+  // 兼容三种表格格式（自动根据列数检测）：
+  //   8 列（daily）：  Date | Models | Input | Output | Cache Create | Cache Read | Total Tokens | Cost
+  //   9 列（session）：Session | Models | Input | Output | Cache Create | Cache Read | Total Tokens | Cost | Last Activity
+  //   10 列（agent）：  Date | Agent | Models | Input | Output | Cache Create | Cache Read | Total Tokens | Cost
+  // =========================================================
+
+  /**
+   * 检测行是否为组头（日期汇总行 / session 汇总行）
+   * 组头特征：非子行、非 Total、有模型列表且有 token 数据
+   *
+   * @param {string[]} parts - 已按 │ 分割的行
+   * @param {number} modelListCol - 模型列表所在列索引
+   * @returns {boolean}
+   */
+  function isGroupHeader(parts, modelListCol) {
+    const firstCol = (parts[1] || '').trim();
+    // 排除子行、Total、空行、分隔线
+    if (!firstCol || firstCol === 'Total' || /^└─/.test(firstCol)) return false;
+    if (/^[┌┐├┤└┘┴┬┼─═╭╮╰╯]/.test(firstCol)) return false;
+    // 必须有模型列表（"- " 或 " - " 开头，模型名可能在后续行换行）
+    const modelCol = (parts[modelListCol] || '').trim();
+    if (!/^-/.test(modelCol)) return false;
+    // 必须有 token 数据（Input 列非空）
+    const inputCol = modelListCol + 1; // Input 紧跟在 Models 后面
+    const inputVal = parseNumberColumn(parts[inputCol]);
+    return inputVal !== null;
+  }
+
+  // 根据列数和内容模式自动检测表格格式
+  // 三种格式的模型列表位置不同：8/9 列在 parts[2]，10 列在 parts[3]
+  let maxParts = 10;
+  /** @type {number} */
+  let modelListCol = 2;
+  for (const line of lines) {
+    const stripped = stripAnsi(line);
+    const parts = stripped.split('│');
+    if (parts.length > maxParts) maxParts = parts.length;
+    // 检测模型列表位置：含 "- modelName" 模式的列
+    if (parts.length >= 4 && /^[\s-]+\S/.test((parts[3] || ''))) {
+      const col3 = (parts[3] || '').trim();
+      const col2 = (parts[2] || '').trim();
+      // 如果 parts[3] 有 "- modelName" 且 parts[2] 没有 → 10 列 Agent 视图
+      if (/^-\s+\S/.test(col3) && !/^-\s+\S/.test(col2)) {
+        modelListCol = 3;
+      }
+    }
+  }
+
+  /** @type {number} costIdx, subInputIdx, subOutputIdx, subCacheReadIdx, subCostIdx */
+  let costIdx, subInputIdx, subOutputIdx, subCacheReadIdx, subCostIdx;
+
+  if (isCompact) {
+    // compact 模式：5-6 列，无 Cache/Total Tokens 列
+    // daily:  Date | Models | Input | Output | Cost (CNY)
+    // session: Session | Models | Input | Output | Cost (CNY) | Last Activity
+    modelListCol = 2;
+    costIdx = 5;
+    subInputIdx = 3;
+    subOutputIdx = 4;
+    subCacheReadIdx = -1; // compact 模式无 Cache Read 列，统一用 0
+    subCostIdx = 5;
+  } else if (modelListCol === 3) {
+    // 10 列：Agent 视图（Date | Agent | Models | Input | Output | Cache Create | Cache Read | Total Tokens | Cost）
+    costIdx = 9;
+    subInputIdx = 4;
+    subOutputIdx = 5;
+    subCacheReadIdx = 7;
+    subCostIdx = 9;
+  } else {
+    // 8 或 9 列：daily / session 模式（Models 在 parts[2]）
+    costIdx = 8;
+    subInputIdx = 3;
+    subOutputIdx = 4;
+    subCacheReadIdx = 6;
+    subCostIdx = 8;
+  }
+
+  /** @type {Array<{ idx: number; costSum: number }>} */
+  const groupSummaries = [];
+  /** @type {number[]} */
+  let currentGroupCosts = [];
+  let totalLineIdx = -1;
+  /** @type {string[]} */
+  const resultLines = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const stripped = stripAnsi(lines[i]);
+    const parts = stripped.split('│');
+
+    if (parts.length < MIN_PARTS) {
+      resultLines.push(lines[i]);
+      continue;
+    }
+
+    const firstCol = (parts[1] || '').trim();
+
+    // --- 组头（日期汇总行 / session 汇总行）---
+    if (isGroupHeader(parts, modelListCol)) {
+      // 结算上一个组
+      if (groupSummaries.length > 0 && currentGroupCosts.length > 0) {
+        const prev = groupSummaries[groupSummaries.length - 1];
+        prev.costSum = currentGroupCosts.reduce((a, b) => a + b, 0);
+      }
+      groupSummaries.push({ idx: resultLines.length, costSum: 0 });
+      currentGroupCosts = [];
+
+      // 检查是否为单模型组头（无 -b 模式）：
+      // Models 列只有单个 "- modelName"（不含逗号，不含多个模型）
+      // 这种行既是组头也是数据行，需要直接在此计算中国模型费用
+      //
+      // 重要：需要区分无 -b（单模型=组头+数据行合一）和 -b 模式（组头有 token 但后面有 └─ 子行）
+      // 判断方法：看后面是否有 └─ 子行，有则是 -b 模式，不要内联处理
+      const groupModelCol = (parts[modelListCol] || '').trim();
+      const singleModelMatch = groupModelCol.match(/^-\s+(\S+)$/);
+      if (singleModelMatch) {
+        // 检查后续行是否为 └─ 子行（-b 模式标志）
+        let hasBreakdownRows = false;
+        for (let j = i + 1; j < Math.min(i + 5, lines.length); j++) {
+          const aheadStripped = stripAnsi(lines[j]);
+          const aheadParts = aheadStripped.split('│');
+          if (aheadParts.length >= MIN_PARTS) {
+            const aheadFirstCol = (aheadParts[1] || '').trim();
+            if (/^└─/.test(aheadFirstCol)) {
+              hasBreakdownRows = true;
+              break;
+            }
+            // 遇到下一个组头或 Total 行就停止搜索
+            if (aheadFirstCol && aheadFirstCol !== 'Total' && !/^[┌┐├┤└┘┴┬┼─═╭╮╰╯]/.test(aheadFirstCol)) {
+              break;
+            }
+          }
+        }
+
+        if (!hasBreakdownRows) {
+          const modelName = singleModelMatch[1];
+          const matched = matchCnModel(modelName, models);
+          if (matched) {
+            const inputTokens = parseNumberColumn(parts[modelListCol + 1]);
+            const outputTokens = parseNumberColumn(parts[modelListCol + 2]);
+            if (inputTokens !== null && outputTokens !== null) {
+              const cacheReadCol = modelListCol + 4;
+              const cacheReadTokens = parseNumberColumn(parts[cacheReadCol]) || 0;
+              const directCost = calcCnCost(matched.pricing, inputTokens, outputTokens, cacheReadTokens);
+              currentGroupCosts.push(directCost);
+              resultLines.push(updateLineCost(lines[i], costIdx, directCost));
+              continue;
+            }
+          } else {
+            // 非中国模型：从已有费用中提取
+            const existingCost = extractCostFromLine(lines[i], costIdx);
+            if (existingCost > 0) {
+              currentGroupCosts.push(existingCost);
+            }
+          }
+        }
+      }
+
+      resultLines.push(lines[i]);
+      continue;
+    }
+
+    // --- Total 行 ---
+    if (firstCol === 'Total') {
+      if (groupSummaries.length > 0 && currentGroupCosts.length > 0) {
+        const prev = groupSummaries[groupSummaries.length - 1];
+        prev.costSum = currentGroupCosts.reduce((a, b) => a + b, 0);
+      }
+      totalLineIdx = resultLines.length;
+      resultLines.push(lines[i]);
+      continue;
+    }
+
+    // --- 子行：格式A（└─ 在 Date/Session 列）---
+    const subMatch = firstCol.match(/^└─\s+(\S+)/);
+    if (subMatch) {
+      const modelName = subMatch[1];
+      const matched = matchCnModel(modelName, models);
+
+      if (matched) {
+        const inputTokens = parseNumberColumn(parts[subInputIdx]);
+        const outputTokens = parseNumberColumn(parts[subOutputIdx]);
+        if (inputTokens !== null && outputTokens !== null) {
+          const cacheReadTokens = parseNumberColumn(parts[subCacheReadIdx]) || 0;
+          const directCost = calcCnCost(matched.pricing, inputTokens, outputTokens, cacheReadTokens);
+          currentGroupCosts.push(directCost);
+          resultLines.push(updateLineCost(lines[i], subCostIdx, directCost));
+          continue;
+        }
+      } else {
+        // 非中国模型：提取已有费用
+        const existingCost = extractCostFromLine(lines[i], subCostIdx);
+        if (existingCost > 0) {
+          currentGroupCosts.push(existingCost);
+        }
+        resultLines.push(lines[i]);
+        continue;
+      }
+    }
+
+    // --- 子行：格式B（- modelName 在 Models 列，Agent 视图）---
+    const modelCol = (parts[modelListCol] || '').trim();
+    const mainMatch = modelCol.match(/^-\s+(\S+)/);
+    if (mainMatch) {
+      const modelName = mainMatch[1];
+      const matched = matchCnModel(modelName, models);
+
+      if (matched) {
+        const inputTokens = parseNumberColumn(parts[modelListCol + 1]); // Input follows Models
+        const outputTokens = parseNumberColumn(parts[modelListCol + 2]); // Output follows Input
+        if (inputTokens !== null && outputTokens !== null) {
+          // Cache Read 的偏移取决于列数
+          const cacheReadCol = modelListCol + 4; // Models+Input+Output+CacheCreate → +4
+          const cacheReadTokens = parseNumberColumn(parts[cacheReadCol]) || 0;
+          const directCost = calcCnCost(matched.pricing, inputTokens, outputTokens, cacheReadTokens);
+          currentGroupCosts.push(directCost);
+          resultLines.push(updateLineCost(lines[i], costIdx, directCost));
+          continue;
+        }
+      }
+    }
+
+    // 非数据行（分隔线等），直接透传
+    resultLines.push(lines[i]);
+  }
+
+  // 结算最后一个组
+  if (groupSummaries.length > 0 && currentGroupCosts.length > 0) {
+    const last = groupSummaries[groupSummaries.length - 1];
+    last.costSum = currentGroupCosts.reduce((a, b) => a + b, 0);
+  }
+
+  // =========================================================
+  // Phase 3：回填组头行和 Total 行的费用
+  // =========================================================
+  for (const { idx, costSum } of groupSummaries) {
+    if (costSum > 0) {
+      resultLines[idx] = updateLineCost(resultLines[idx], costIdx, costSum);
+    }
+  }
+
+  if (totalLineIdx >= 0) {
+    const grandTotal = groupSummaries.reduce((s, d) => s + d.costSum, 0);
+    if (grandTotal > 0) {
+      resultLines[totalLineIdx] = updateLineCost(resultLines[totalLineIdx], costIdx, grandTotal);
+    }
+  }
 
   return resultLines.join('\n');
 }

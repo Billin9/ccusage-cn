@@ -31,6 +31,19 @@ async function main() {
   // a. 获取 CLI 参数，逐字转发（per D-09）
   const args = process.argv.slice(2);
 
+  // a2. 默认启用 --offline（per D-11）
+  // 上游原生二进制在每次运行时下载 ~1.6MB LiteLLM 定价文件
+  // （https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json），
+  // 在中国大陆下载缓慢且无持久化缓存。--offline 使用编译时嵌入的 Claude 模型定价，
+  // 中国模型费用由 ccusage-cn 的 output-transform 直接人民币计算覆盖，无需上游定价。
+  // 用户可通过 --no-offline 显式恢复在线模式获取最新国外模型定价。
+  const userWantsOnline = args.includes('--no-offline');
+  const hasOfflineFlag = args.includes('--offline') || args.includes('-O');
+  if (!userWantsOnline && !hasOfflineFlag) {
+    // 插入到子命令之前，确保被上游 CLI 解析器识别为全局选项
+    args.unshift('--offline');
+  }
+
   // b. 检测模式（per D-06）
   const isHelp = args.includes('--help') || args.includes('-h');
   const isJson = args.includes('--json') && !isHelp;

@@ -1,6 +1,6 @@
 {
   "name": "ccusage-cn",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "type": "module",
   "bin": {
     "ccusage-cn": "./bin/cli.js"
@@ -37,10 +37,10 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/user/ccusage-cn.git"
+    "url": "git+https://github.com/Billin9/ccusage-cn.git"
   },
   "license": "MIT",
-  "homepage": "https://github.com/user/ccusage-cn#readme",
+  "homepage": "https://github.com/Billin9/ccusage-cn#readme",
   "engines": {
     "node": ">=18"
   },
